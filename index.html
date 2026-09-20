@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Block Village" />
+    <meta name="theme-color" content="#4F9BE8" />
+    <meta name="format-detection" content="telephone=no" />
+    <link rel="icon" href="%BASE_URL%favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="%BASE_URL%apple-touch-icon.png" />
+    <title>Block Village</title>
+  </head>
+  <body>
+    <canvas id="c"></canvas>
+    <div id="hud" aria-hidden="true"></div>
+    <div id="joystick"><div class="knob"></div></div>
+    <div id="start">
+      <div class="start-card panel">
+        <div class="start-title">Block Village</div>
+        <div class="start-sub" id="start-status">Loading…</div>
+        <div class="start-play" id="start-play"></div>
+      </div>
+    </div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
