@@ -28,6 +28,21 @@ export class CameraRig {
     this.shakeT = 0;
     this.shakeAmp = 0;
     this._solid = (id) => SOLID[id] && !LIQUID[id];
+    this.orbit = null;
+  }
+
+  // Celebration orbit around a point; the camera glides back afterwards.
+  startOrbit(cx, cy, cz, radius, height) {
+    const c = this.camera.position;
+    this.orbit = { cx, cy, cz, radius, height, angle: Math.atan2(c.z - cz, c.x - cx) };
+  }
+
+  stopOrbit() {
+    if (!this.orbit) return;
+    this.orbit = null;
+    this.pos.copy(this.camera.position);
+    this.vel.x.v = this.vel.y.v = this.vel.z.v = 0;
+    this.init = true;
   }
 
   toggle() {
@@ -57,6 +72,15 @@ export class CameraRig {
       const f = this.shakeAmp * (this.shakeT / 0.12);
       sx = (Math.random() * 2 - 1) * f;
       sy = (Math.random() * 2 - 1) * f;
+    }
+
+    if (this.orbit) {
+      const o = this.orbit;
+      o.angle += dt * 0.45;
+      cam.position.set(o.cx + Math.cos(o.angle) * o.radius, o.cy + o.height, o.cz + Math.sin(o.angle) * o.radius);
+      cam.lookAt(o.cx, o.cy, o.cz);
+      this.avatarVisible = true;
+      return;
     }
 
     if (this.mode === 'first') {

@@ -63,6 +63,49 @@ export class Highlight {
     this.pop.castShadow = false;
     scene.add(this.pop);
     this.popTween = null;
+
+    // --- ghost fade (plays with the pop when a ghost is filled) ---
+    this.fadeMaterial = new THREE.MeshBasicMaterial({ color: 0xa0c8ff, transparent: true, opacity: 0, depthWrite: false });
+    this.fade = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), this.fadeMaterial);
+    this.fade.visible = false;
+    scene.add(this.fade);
+
+    // --- placement footprint ---
+    this.footMaterial = new THREE.MeshBasicMaterial({ color: 0x3fa34d, transparent: true, opacity: 0.22, depthWrite: false });
+    this.footprint = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), this.footMaterial);
+    this.footEdges = new THREE.LineSegments(
+      new THREE.EdgesGeometry(new THREE.BoxGeometry(1, 1, 1)),
+      new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.9 })
+    );
+    this.footprint.add(this.footEdges);
+    this.footprint.visible = false;
+    this.footprint.renderOrder = 6;
+    scene.add(this.footprint);
+  }
+
+  setFootprint(x0, y0, z0, w, h, d, valid) {
+    this.footprint.visible = true;
+    this.footprint.position.set(x0 + w / 2, y0 + h / 2, z0 + d / 2);
+    this.footprint.scale.set(w + 0.02, h + 0.02, d + 0.02);
+    this.footMaterial.color.set(valid ? 0x3fa34d : 0xd9403a);
+    this.footEdges.material.color.set(valid ? 0xffffff : 0xffb0b0);
+  }
+
+  hideFootprint() {
+    this.footprint.visible = false;
+  }
+
+  // Ghost fades/expands out while the real block pops in.
+  playFill(x, y, z, blockId) {
+    this.playPop(x, y, z, blockId);
+    this.fade.position.set(x + 0.5, y + 0.5, z + 0.5);
+    this.fade.scale.setScalar(1.02);
+    this.fadeMaterial.opacity = 0.6;
+    this.fade.visible = true;
+    gsap.killTweensOf(this.fadeMaterial);
+    gsap.killTweensOf(this.fade.scale);
+    gsap.to(this.fadeMaterial, { opacity: 0, duration: 0.22, ease: 'power2.out', onComplete: () => (this.fade.visible = false) });
+    gsap.to(this.fade.scale, { x: 1.3, y: 1.3, z: 1.3, duration: 0.22, ease: 'power2.out' });
   }
 
   setResolution(w, h) {

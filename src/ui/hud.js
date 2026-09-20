@@ -79,7 +79,8 @@ export function createHUD(container, avatarFaceCanvas, cb) {
   // --- right stack ---
   const rs = document.createElement('div');
   rs.id = 'right-stack';
-  const buildBtn = button({ id: 'btn-build', icon: 'hammer', label: 'Build', cls: 'big', disabled: true });
+  const buildBtn = button({ id: 'btn-build', icon: 'hammer', label: 'Build', cls: 'big' });
+  pressable(buildBtn, null, () => cb.onBuild?.());
   const flyBtn = button({ id: 'btn-fly', icon: 'wings', label: 'Fly', cls: 'big' });
   pressable(flyBtn, null, () => cb.onFly?.());
   const jumpBtn = button({ id: 'btn-jump', icon: 'arrowUp', label: 'Jump', cls: 'big jump' });
@@ -100,7 +101,15 @@ export function createHUD(container, avatarFaceCanvas, cb) {
   // --- bottom-right inventory ---
   const invBtn = button({ id: 'btn-inventory', icon: 'grid', disabled: true });
 
-  container.append(tl, tr, rs, invBtn);
+  // --- placement bar (top-centre while positioning a blueprint) ---
+  const placement = document.createElement('div');
+  placement.id = 'placement';
+  placement.className = 'panel';
+  placement.style.display = 'none';
+  placement.innerHTML = `${iconSVG('hammer', 26)}<span class="pl-name"></span><div class="btn panel small" id="btn-cancel-place">${iconSVG('cross', 26)}</div>`;
+  pressable(placement.querySelector('#btn-cancel-place'), null, () => cb.onCancelPlacement?.());
+
+  container.append(tl, tr, rs, invBtn, placement);
 
   const gemCount = tr.querySelector('#gem-count');
   const xpFill = pill.querySelector('.xp-fill');
@@ -111,8 +120,31 @@ export function createHUD(container, avatarFaceCanvas, cb) {
     el: container,
     pill,
     setLevel(level, frac) {
+      const changed = lvl.textContent !== `LVL ${level}`;
       lvl.textContent = `LVL ${level}`;
-      gsap.to(xpFill, { width: `${Math.round(frac * 100)}%`, duration: 0.4, ease: 'power2.out' });
+      gsap.to(xpFill, { width: `${Math.round(frac * 100)}%`, duration: 0.6, ease: 'power2.out' });
+      if (changed) gsap.fromTo(pill, { scale: 1.15 }, { scale: 1, duration: 0.5, ease: 'elastic.out(1, 0.5)' });
+    },
+    levelBump() {
+      gsap.fromTo(pill, { scale: 1.2 }, { scale: 1, duration: 0.6, ease: 'elastic.out(1, 0.4)' });
+    },
+    gemCounterPoint() {
+      const r = tr.querySelector('.icon').getBoundingClientRect();
+      return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+    },
+    flashGems() {
+      gsap.fromTo(tr, { backgroundColor: 'rgba(217,64,58,0.7)', x: -5 }, { backgroundColor: 'rgba(40,44,52,0.55)', x: 0, duration: 0.5, ease: 'elastic.out(1, 0.3)' });
+    },
+    showPlacement(name) {
+      placement.querySelector('.pl-name').textContent = name;
+      placement.style.display = '';
+      gsap.fromTo(placement, { y: -24, opacity: 0 }, { y: 0, opacity: 1, duration: 0.26, ease: 'power2.out' });
+    },
+    hidePlacement() {
+      gsap.to(placement, { y: -24, opacity: 0, duration: 0.2, ease: 'power2.in', onComplete: () => (placement.style.display = 'none') });
+    },
+    shakePlacement() {
+      gsap.fromTo(placement, { x: -8 }, { x: 0, duration: 0.4, ease: 'elastic.out(1, 0.3)' });
     },
     setGems(n) {
       if (n === gems) return;

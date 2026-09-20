@@ -15,7 +15,8 @@ export function setupDesktop({ canvas, actions }) {
       case 'KeyF': actions.toggleFly(); break;
       case 'KeyC': actions.toggleCamera(); break;
       case 'F3': actions.toggleDebug(); e.preventDefault(); break;
-      case 'Escape': actions.pause?.(); break;
+      case 'Escape': actions.escape?.(); break;
+      case 'KeyB': actions.build?.(); break;
       case 'Tab': e.preventDefault(); break;
       default:
         if (/^Digit[1-6]$/.test(e.code)) actions.selectSlot(parseInt(e.code[5], 10) - 1);
@@ -29,7 +30,7 @@ export function setupDesktop({ canvas, actions }) {
 
   canvas.addEventListener('mousedown', (e) => {
     if (!locked) {
-      canvas.requestPointerLock?.();
+      canvas.requestPointerLock?.()?.catch?.(() => {});
       return;
     }
     const cx = canvas.clientWidth / 2, cy = canvas.clientHeight / 2;

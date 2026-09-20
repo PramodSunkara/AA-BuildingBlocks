@@ -1,12 +1,7 @@
 import { blockById, SHAPE } from '../data/blocks.js';
 
-// Isometric mini-cube icons rendered once per block type to a small canvas and cached.
-export function createBlockIconRenderer(atlas, size = 56) {
-  const cache = new Map();
-  const dpr = Math.min(2, window.devicePixelRatio || 1);
-
-  function face(ctx, tile, p0, p1, p3, shade) {
-    // maps tile pixel (0,0)->p0, (16,0)->p1, (0,16)->p3
+// Draws one textured parallelogram face: tile pixel (0,0)->p0, (16,0)->p1, (0,16)->p3.
+export function drawFace(ctx, tile, p0, p1, p3, shade, dpr) {
     const a = (p1[0] - p0[0]) / 16, b = (p1[1] - p0[1]) / 16;
     const c = (p3[0] - p0[0]) / 16, d = (p3[1] - p0[1]) / 16;
     ctx.save();
@@ -28,7 +23,13 @@ export function createBlockIconRenderer(atlas, size = 56) {
       ctx.globalCompositeOperation = 'source-over';
     }
     ctx.restore();
-  }
+}
+
+// Isometric mini-cube icons rendered once per block type to a small canvas and cached.
+export function createBlockIconRenderer(atlas, size = 56) {
+  const cache = new Map();
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  const face = (ctx, tile, p0, p1, p3, shade) => drawFace(ctx, tile, p0, p1, p3, shade, dpr);
 
   function render(blockId) {
     if (cache.has(blockId)) return cache.get(blockId);

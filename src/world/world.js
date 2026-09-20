@@ -43,14 +43,15 @@ export class World {
   }
 
   // Player/game edit: records a diff, marks chunks dirty, notifies the autosaver.
-  setBlock(x, y, z, id, { record = true, notify = true } = {}) {
+  // recordAs: value stored in the edit diff instead of `id` (ghost blocks are recorded as air).
+  setBlock(x, y, z, id, { record = true, notify = true, recordAs } = {}) {
     if (!this.inBounds(x, y, z)) return false;
     const c = this.chunks[(z >> 4) * this.chunksX + (x >> 4)];
     const lx = x & 15, lz = z & 15;
     const idx = (y * CH + lz) * CH + lx;
     if (c.data[idx] === id) return false;
     c.data[idx] = id;
-    if (record) c.edits.set(idx, id);
+    if (record) c.edits.set(idx, recordAs ?? id);
     this.markDirty(c);
     if (lx === 0) this.markDirty(this.chunkAt(c.cx - 1, c.cz));
     if (lx === CH - 1) this.markDirty(this.chunkAt(c.cx + 1, c.cz));

@@ -70,9 +70,13 @@ def(38, 'Cactus', { side: TILE.CACTUS_SIDE, top: TILE.CACTUS_TOP, pack: 'nature'
 export const GRASS_TUFT = 39;
 def(GRASS_TUFT, 'Grass Tuft', { tile: TILE.GRASS_TUFT, pack: 'nature', shape: SHAPE.CROSS, opaque: false, solid: false, group: GROUP.CUTOUT, replaceable: true, breakTime: 0.1, sound: 'grass', inventory: false });
 
+// Ghost block: translucent placeholder for an unbuilt blueprint voxel. Never saved as a world edit.
+export const GHOST = 40;
+def(GHOST, 'Ghost', { tile: TILE.GHOST, opaque: false, solid: false, group: GROUP.TRANSPARENT, cullSame: true, breakTime: Infinity, inventory: false, sound: 'glass' });
+
 export const GRASS = 1, DIRT = 2, STONE = 3, COBBLE = 4, STONE_BRICK = 5, SAND = 6, OAK_TRUNK = 8, PLANKS = 9;
 export const LEAVES = 10, APPLE_LEAVES = 11, FLOWER_LEAVES = 12, ROOFING = 13, GLASS = 14, FENCE = 15, TORCH = 16, BEDROCK = 17;
-export const FLOWER_RED = 30, FLOWER_YELLOW = 31, FLOWER_BLUE = 32;
+export const FLOWER_RED = 30, FLOWER_YELLOW = 31, FLOWER_BLUE = 32, WHEAT_1 = 33, PUMPKIN = 36;
 
 // Default hotbar for the Base pack (Stage 1).
 export const HOTBAR_DEFAULT = [PLANKS, STONE_BRICK, GLASS, ROOFING, FENCE, TORCH];

@@ -78,8 +78,27 @@ export function createAudio() {
       burst((CUTOFF[group] || 900) * 0.8, 0.4, 0.22, 0.7);
       tone((PITCH[group] || 200) * 0.6, 'square', 0.08, 0.08, -60);
     },
-    tick() {
-      tone(1200, 'sine', 0.15, 0.06, 300);
+    // ghost fill: short tick plus a tone that rises with build progress (0..1)
+    tick(progress = 0) {
+      tone(500 + 700 * progress, 'triangle', 0.18, 0.12, 120);
+      burst(2500, 0.08, 0.03);
+    },
+    // ~3 s celebration jingle
+    jingle() {
+      if (!ctx) return;
+      const notes = [523, 659, 784, 1047, 784, 1047, 1319, 1568];
+      notes.forEach((f, i) => setTimeout(() => tone(f, 'triangle', 0.22, i === notes.length - 1 ? 1.2 : 0.35), i * 220));
+      setTimeout(() => { tone(1047, 'sine', 0.12, 1.4); tone(1319, 'sine', 0.1, 1.4); }, 1900);
+    },
+    // level-up fanfare
+    fanfare() {
+      if (!ctx) return;
+      const notes = [392, 523, 659, 784];
+      notes.forEach((f, i) => setTimeout(() => { tone(f, 'square', 0.12, 0.28); tone(f * 2, 'triangle', 0.1, 0.28); }, i * 130));
+      setTimeout(() => { tone(1047, 'square', 0.14, 0.9); tone(1319, 'triangle', 0.1, 0.9); }, 560);
+    },
+    error() {
+      tone(220, 'square', 0.1, 0.12, -60);
     },
     tap() {
       tone(880, 'sine', 0.12, 0.05, 200);

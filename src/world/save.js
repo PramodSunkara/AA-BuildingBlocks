@@ -4,7 +4,18 @@ import { CONFIG } from '../config.js';
 export const KEYS = {
   world: 'bv:world',
   meta: 'bv:meta',
+  buildings: 'bv:buildings',
+  profiles: 'bv:profiles',
 };
+
+export async function loadKey(key) {
+  try {
+    return await get(KEYS[key]);
+  } catch (e) {
+    console.warn('load failed', key, e);
+    return undefined;
+  }
+}
 
 // Versioned save schema. Bump CONFIG.saveVersion and add a case here when the format changes.
 export function migrate(data) {
@@ -76,26 +87,29 @@ export async function saveMeta(meta) {
   }
 }
 
-// Debounced autosave: 2 s after the last change, plus immediately when the page is hidden/unloaded.
-export function createAutosaver(world, delayMs, onSaved) {
-  let timer = null, dirty = false, saving = false, queued = false;
+// Debounced autosave for several keys: 2 s after the last change, plus immediately when the
+// page is hidden/unloaded. savers: { key: () => serializable }.
+export function createAutosaver({ delayMs, savers, onSaved }) {
+  let timer = null, saving = false, queued = false;
+  const dirty = new Set();
   const flush = async () => {
     clearTimeout(timer);
     timer = null;
-    if (!dirty) return;
+    if (dirty.size === 0) return;
     if (saving) {
       queued = true;
       return;
     }
     saving = true;
-    dirty = false;
+    const keys = [...dirty];
+    dirty.clear();
     try {
-      await set(KEYS.world, serializeWorld(world));
-      onSaved?.(true);
+      await Promise.all(keys.map((k) => set(KEYS[k], savers[k]())));
+      onSaved?.(true, keys);
     } catch (e) {
       console.warn('save failed', e);
-      dirty = true;
-      onSaved?.(false);
+      for (const k of keys) dirty.add(k);
+      onSaved?.(false, keys);
     }
     saving = false;
     if (queued) {
@@ -103,8 +117,8 @@ export function createAutosaver(world, delayMs, onSaved) {
       flush();
     }
   };
-  world.onChange = () => {
-    dirty = true;
+  const markDirty = (key) => {
+    dirty.add(key);
     clearTimeout(timer);
     timer = setTimeout(flush, delayMs);
   };
@@ -112,5 +126,5 @@ export function createAutosaver(world, delayMs, onSaved) {
     if (document.hidden) flush();
   });
   window.addEventListener('pagehide', flush);
-  return { flush, isDirty: () => dirty };
+  return { flush, markDirty, isDirty: () => dirty.size > 0 };
 }

@@ -94,3 +94,60 @@ body {
   position: absolute; left: 50%; transform: translateX(-50%); top: var(--sa-top); padding: 8px 12px;
   font-size: 16px; font-family: ui-monospace, Menlo, monospace; text-shadow: none; line-height: 1.35; pointer-events: none;
 }
+
+/* ---------- Stage 2: catalogue, placement, progress, celebration ---------- */
+.btn.small { width: 48px; height: 48px; border-radius: 12px; }
+.backdrop { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.45); z-index: 4; }
+.side-panel {
+  position: fixed; top: var(--sa-top); bottom: calc(env(safe-area-inset-bottom, 0px) + 12px); right: 0;
+  width: min(560px, 62vw); border-radius: 18px 0 0 18px; border-right: none; z-index: 5;
+  display: flex; flex-direction: column; overflow: hidden; background: rgba(40, 44, 52, 0.82);
+}
+.side-header { display: flex; align-items: center; gap: 10px; padding: 12px 14px 8px 18px; font-size: 26px; font-weight: 700; }
+.side-header span { flex: 1; }
+.cards { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; touch-action: pan-y; padding: 6px 14px 16px; display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; align-content: start; }
+.card { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 8px 10px; cursor: pointer; background: rgba(255, 255, 255, 0.1); touch-action: pan-y; }
+.card canvas { image-rendering: pixelated; }
+.card-name { font-size: 20px; font-weight: 700; text-align: center; }
+.card-meta { display: flex; gap: 10px; font-size: 18px; align-items: center; }
+.card-meta .tag { display: inline-flex; align-items: center; gap: 4px; }
+.card-meta .tag .icon { filter: none; }
+.card.locked { opacity: 0.5; filter: grayscale(0.7); }
+.card-meta .lock { color: #ffd0a0; }
+.card-meta .cost { color: #9cf5b5; }
+.card-meta .ok { color: #9cf5b5; }
+
+#placement, #progress {
+  position: absolute; left: 50%; transform: translateX(-50%); top: var(--sa-top);
+  display: flex; align-items: center; gap: 12px; padding: 8px 10px 8px 16px; height: 56px; font-size: 22px; font-weight: 700;
+}
+#progress { flex-direction: column; gap: 4px; height: auto; padding: 8px 18px 10px; min-width: 240px; pointer-events: none; }
+#progress .pb-name { font-size: 22px; line-height: 1; }
+#progress .pb-count { font-size: 19px; opacity: 0.95; line-height: 1; }
+#progress .pb-bar { width: 220px; height: 12px; border-radius: 6px; background: rgba(0, 0, 0, 0.4); overflow: hidden; border: 1px solid rgba(255, 255, 255, 0.3); }
+#progress .pb-fill { height: 100%; width: 0%; background: linear-gradient(#7ee08a, #3fa34d); border-radius: 6px; }
+
+#vignette {
+  position: fixed; inset: 0; pointer-events: none; opacity: 0; z-index: 3;
+  background: radial-gradient(ellipse at center, rgba(0, 0, 0, 0) 35%, rgba(0, 0, 0, 0.55) 100%);
+}
+#confetti { position: fixed; inset: 0; pointer-events: none; overflow: hidden; z-index: 6; }
+.confetti { position: absolute; left: 0; top: 0; width: 12px; height: 18px; border-radius: 3px; }
+#celebration {
+  position: fixed; left: 50%; top: 28%; transform: translate(-50%, -50%); pointer-events: none; z-index: 6;
+  display: flex; flex-direction: column; align-items: center; gap: 10px; text-align: center;
+}
+.cel-title { font-size: 52px; font-weight: 700; color: #ffe27a; text-shadow: 3px 3px 0 rgba(0, 0, 0, 0.55); line-height: 1.05; padding: 0 20px; }
+.cel-rewards { display: flex; gap: 28px; font-size: 32px; font-weight: 700; text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.55); }
+.cel-rewards span { display: inline-flex; align-items: center; gap: 8px; }
+.cel-hint { font-size: 20px; opacity: 0; }
+#levelup {
+  position: fixed; left: 50%; top: 40%; transform: translate(-50%, -50%); pointer-events: none; z-index: 6;
+  font-size: 64px; font-weight: 700; color: #9cf5b5; text-shadow: 3px 3px 0 rgba(0, 0, 0, 0.55);
+}
+#dialog { z-index: 7; }
+.dialog-text { font-size: 28px; }
+.dialog-buttons { display: flex; gap: 24px; }
+.btn.confirm { background: rgba(63, 163, 77, 0.7); }
+.btn.deny { background: rgba(217, 64, 58, 0.7); }
+.flying-gem { position: fixed; left: -15px; top: -15px; pointer-events: none; z-index: 8; }
