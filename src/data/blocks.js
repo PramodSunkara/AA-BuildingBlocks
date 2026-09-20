@@ -8,9 +8,10 @@ export const TILE = {
   PUMPKIN_SIDE: 30, PUMPKIN_TOP: 31, PUMPKIN_FACE: 32, MUSHROOM: 33, CACTUS_SIDE: 34, CACTUS_TOP: 35,
   WOOL_0: 36, // 36..46 are the 11 wool colours
   CRACK_0: 48, CRACK_1: 49, CRACK_2: 50, CRACK_3: 51,
+  DOOR_BOTTOM: 52, DOOR_TOP: 53, PICTURE: 54, CLOCK: 55, BOOKS: 56, DARK_PLANKS: 57,
 };
 
-export const SHAPE = { CUBE: 0, CROSS: 1, FENCE: 2, TORCH: 3 };
+export const SHAPE = { CUBE: 0, CROSS: 1, FENCE: 2, TORCH: 3, MODEL: 4 };
 export const GROUP = { OPAQUE: 0, CUTOUT: 1, TRANSPARENT: 2 };
 
 export const BLOCKS = [];
@@ -77,6 +78,119 @@ def(GHOST, 'Ghost', { tile: TILE.GHOST, opaque: false, solid: false, group: GROU
 export const GRASS = 1, DIRT = 2, STONE = 3, COBBLE = 4, STONE_BRICK = 5, SAND = 6, OAK_TRUNK = 8, PLANKS = 9;
 export const LEAVES = 10, APPLE_LEAVES = 11, FLOWER_LEAVES = 12, ROOFING = 13, GLASS = 14, FENCE = 15, TORCH = 16, BEDROCK = 17;
 export const FLOWER_RED = 30, FLOWER_YELLOW = 31, FLOWER_BLUE = 32, WHEAT_1 = 33, PUMPKIN = 36;
+
+// ---------- Furniture: models built from sub-boxes (block-local 0..1 units) ----------
+const S = 1 / 16;
+// tiles: [+x, -x, +y, -y, +z, -z]
+function box(lo, hi, tiles) {
+  return { lo, hi, tiles: Array.isArray(tiles) ? tiles : [tiles, tiles, tiles, tiles, tiles, tiles] };
+}
+// Rotate a model 90 degrees about +y so a front facing +z faces +x: (x,z) -> (z, 1-x).
+function rotateModel(model) {
+  return model.map((b) => {
+    const xs = [b.lo[2], b.hi[2]], zs = [1 - b.lo[0], 1 - b.hi[0]];
+    const t = b.tiles;
+    return { lo: [Math.min(...xs), b.lo[1], Math.min(...zs)], hi: [Math.max(...xs), b.hi[1], Math.max(...zs)], tiles: [t[4], t[5], t[2], t[3], t[1], t[0]] };
+  });
+}
+export const FACING_DIR = [[0, 1], [1, 0], [0, -1], [-1, 0]]; // facing 0..3 -> front direction (x, z)
+
+function defModel(id, name, model, opts = {}) {
+  return def(id, name, { shape: SHAPE.MODEL, opaque: false, model, pack: 'furniture', sound: 'wood', breakTime: 0.3, ...opts });
+}
+// Four orientation variants: ids base..base+3; only facing 0 is in the inventory.
+function defOriented(base, name, model, opts = {}) {
+  let m = model;
+  const variants = [base, base + 1, base + 2, base + 3];
+  for (let f = 0; f < 4; f++) {
+    const b = defModel(base + f, name, m, { ...opts, facing: f, base, inventory: f === 0 && opts.inventory !== false });
+    b.variants = variants;
+    m = rotateModel(m);
+  }
+}
+
+const P = TILE.PLANKS, DP = TILE.DARK_PLANKS, WW = TILE.WOOL_0 + 5, WR = TILE.WOOL_0;
+export const TABLE = 41;
+defModel(TABLE, 'Table', [
+  box([0, 12 * S, 0], [1, 14 * S, 1], P),
+  box([1 * S, 0, 1 * S], [3 * S, 12 * S, 3 * S], DP), box([13 * S, 0, 1 * S], [15 * S, 12 * S, 3 * S], DP),
+  box([1 * S, 0, 13 * S], [3 * S, 12 * S, 15 * S], DP), box([13 * S, 0, 13 * S], [15 * S, 12 * S, 15 * S], DP),
+]);
+export const BENCH = 42;
+defOriented(BENCH, 'Bench', [
+  box([0, 6 * S, 4 * S], [1, 8 * S, 12 * S], P),
+  box([1 * S, 0, 5 * S], [3 * S, 6 * S, 11 * S], DP), box([13 * S, 0, 5 * S], [15 * S, 6 * S, 11 * S], DP),
+  box([0, 8 * S, 4 * S], [1, 15 * S, 6 * S], P),
+]);
+export const BED = 46;
+defOriented(BED, 'Bed', [
+  box([0, 0, 0], [1, 5 * S, 1], DP),
+  box([1 * S, 5 * S, 0], [15 * S, 9 * S, 1], WW),
+  box([1 * S, 9 * S, 0], [15 * S, 10 * S, 10 * S], WR),
+  box([2 * S, 9 * S, 11 * S], [14 * S, 11 * S, 15 * S], WW),
+], { sound: 'cloth' });
+export const SHELF = 50;
+defOriented(SHELF, 'Shelf', [
+  box([0, 0, 0], [1, 1, 2 * S], DP),
+  box([0, 5 * S, 2 * S], [1, 6 * S, 10 * S], P), box([0, 11 * S, 2 * S], [1, 12 * S, 10 * S], P),
+  box([1 * S, 6 * S, 3 * S], [12 * S, 10 * S, 9 * S], [TILE.BOOKS, TILE.BOOKS, TILE.BOOKS, TILE.BOOKS, TILE.BOOKS, TILE.BOOKS]),
+  box([3 * S, 12 * S, 3 * S], [15 * S, 15 * S, 9 * S], [TILE.BOOKS, TILE.BOOKS, TILE.BOOKS, TILE.BOOKS, TILE.BOOKS, TILE.BOOKS]),
+]);
+export const CHANDELIER = 54;
+defModel(CHANDELIER, 'Chandelier', [
+  box([7 * S, 12 * S, 7 * S], [9 * S, 1, 9 * S], DP),
+  box([3 * S, 5 * S, 3 * S], [13 * S, 7 * S, 5 * S], P), box([3 * S, 5 * S, 11 * S], [13 * S, 7 * S, 13 * S], P),
+  box([3 * S, 5 * S, 5 * S], [5 * S, 7 * S, 11 * S], P), box([11 * S, 5 * S, 5 * S], [13 * S, 7 * S, 11 * S], P),
+  box([3 * S, 7 * S, 3 * S], [5 * S, 12 * S, 5 * S], TILE.TORCH), box([11 * S, 7 * S, 3 * S], [13 * S, 12 * S, 5 * S], TILE.TORCH),
+  box([3 * S, 7 * S, 11 * S], [5 * S, 12 * S, 13 * S], TILE.TORCH), box([11 * S, 7 * S, 11 * S], [13 * S, 12 * S, 13 * S], TILE.TORCH),
+], { solid: false, group: GROUP.CUTOUT, light: true });
+export const PICTURE = 55;
+defOriented(PICTURE, 'Picture', [
+  box([2 * S, 2 * S, 0], [14 * S, 14 * S, 1 * S], [DP, DP, DP, DP, TILE.PICTURE, DP]),
+], { solid: false, wall: true });
+export const CLOCK = 59;
+defOriented(CLOCK, 'Clock', [
+  box([3 * S, 3 * S, 0], [13 * S, 13 * S, 1 * S], [DP, DP, DP, DP, TILE.CLOCK, DP]),
+], { solid: false, wall: true });
+
+// Doors: two blocks tall, panel along x or z, closed or open (open = walkable).
+export const DOOR = 63; // closed, along x, bottom half = the inventory item
+const doorTiles = (axis, open, top) => {
+  const t = top ? TILE.DOOR_TOP : TILE.DOOR_BOTTOM;
+  const alongX = (axis === 'x') !== open; // open doors swing 90 degrees
+  return alongX ? [DP, DP, DP, DP, t, t] : [t, t, DP, DP, DP, DP];
+};
+const doorBox = (axis, open) => {
+  const alongX = (axis === 'x') !== open;
+  if (alongX) return open ? [[0, 0, 0], [1, 1, 2 * S]] : [[0, 0, 7 * S], [1, 1, 9 * S]];
+  return open ? [[0, 0, 0], [2 * S, 1, 1]] : [[7 * S, 0, 0], [9 * S, 1, 1]];
+};
+let doorId = DOOR;
+for (const axis of ['x', 'z']) {
+  for (const open of [false, true]) {
+    for (const top of [false, true]) {
+      const [lo, hi] = doorBox(axis, open);
+      const id = doorId++;
+      defModel(id, 'Door', [box(lo, hi, doorTiles(axis, open, top))], {
+        solid: !open, inventory: id === DOOR, door: { axis, open, top },
+      });
+    }
+  }
+}
+// door partner lookup: (axis, open, top) -> id
+export function doorId3(axis, open, top) {
+  return DOOR + (axis === 'z' ? 4 : 0) + (open ? 2 : 0) + (top ? 1 : 0);
+}
+
+// ---------- Animals are placeable items, not blocks ----------
+export const ANIMAL_SPECIES = ['chicken', 'cow', 'pig', 'sheep', 'dog', 'cat', 'horse', 'rabbit'];
+export const ANIMAL_ITEMS = ANIMAL_SPECIES.map((s) => ({ id: 'animal:' + s, kind: 'animal', species: s, name: s[0].toUpperCase() + s.slice(1), pack: 'animals' }));
+export const PACKS = ['base', 'colors', 'nature', 'furniture', 'animals'];
+export function itemsInPack(pack) {
+  if (pack === 'animals') return ANIMAL_ITEMS;
+  return blocksInPack(pack).map((b) => b.id);
+}
+export const isAnimalItem = (item) => typeof item === 'string' && item.startsWith('animal:');
 
 // Default hotbar for the Base pack (Stage 1).
 export const HOTBAR_DEFAULT = [PLANKS, STONE_BRICK, GLASS, ROOFING, FENCE, TORCH];

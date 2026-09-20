@@ -7,7 +7,7 @@ export function createMaterials(atlasTexture) {
     map: atlasTexture, vertexColors: true, alphaTest: 0.5, side: THREE.DoubleSide,
   });
   const transparent = new THREE.MeshLambertMaterial({
-    map: atlasTexture, vertexColors: true, transparent: true, alphaTest: 0.02, depthWrite: true,
+    map: atlasTexture, vertexColors: true, transparent: true, alphaTest: 0.02, depthWrite: true, side: THREE.DoubleSide,
   });
   opaque.name = 'blocks-opaque';
   cutout.name = 'blocks-cutout';

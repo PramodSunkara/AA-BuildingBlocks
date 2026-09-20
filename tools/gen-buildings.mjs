@@ -2,8 +2,11 @@
 import { writeFileSync, mkdirSync } from 'node:fs';
 import {
   COBBLE, STONE_BRICK, PLANKS, GLASS, ROOFING, FENCE, TORCH, LEAVES, WATER, WHEAT_1, PUMPKIN,
-  FLOWER_RED, FLOWER_YELLOW, FLOWER_BLUE,
+  FLOWER_RED, FLOWER_YELLOW, FLOWER_BLUE, OAK_TRUNK, SAND, WOOL_FIRST,
+  TABLE, BENCH, BED, SHELF, CHANDELIER, PICTURE, CLOCK, DOOR,
 } from '../src/data/blocks.js';
+const W_RED = WOOL_FIRST, W_YELLOW = WOOL_FIRST + 1, W_BLUE = WOOL_FIRST + 2, W_WHITE = WOOL_FIRST + 5;
+const DOOR_TOP = DOOR + 1; // closed door along x: bottom = DOOR, top = DOOR + 1
 
 class Model {
   constructor() { this.v = new Map(); }
@@ -35,7 +38,8 @@ export default {
   level: ${meta.level},
   gemCost: ${meta.gemCost},
   rewardXp: ${meta.rewardXp},
-  rewardGems: ${meta.rewardGems},
+  rewardGems: ${meta.rewardGems},${meta.spawns ? `
+  spawns: ${JSON.stringify(meta.spawns)},` : ''}
   size: [${size.join(', ')}],
   voxels: [
 ${rows}
@@ -110,6 +114,145 @@ ${rows}
   m.box(2, 5, 2, 3, 5, 2, ROOFING);
   m.set(4, 4, 3, COBBLE); m.set(4, 5, 3, COBBLE); // chimney
   emit({ id: 'stone-hut', name: 'Stone Hut', level: 2, gemCost: 0, rewardXp: 450, rewardGems: 6 }, m);
+}
+
+// --- Small House (7x7x6, ~140) ---
+{
+  const m = new Model();
+  m.walls(0, 0, 0, 6, 2, 5, PLANKS);
+  m.set(3, 0, 5, DOOR); m.set(3, 1, 5, DOOR_TOP);
+  m.set(0, 1, 2, GLASS); m.set(6, 1, 2, GLASS); m.set(2, 1, 0, GLASS); m.set(4, 1, 0, GLASS);
+  m.box(0, 3, 0, 6, 3, 5, ROOFING);
+  m.box(1, 4, 1, 5, 4, 4, ROOFING);
+  m.box(2, 5, 2, 4, 5, 3, ROOFING);
+  m.set(5, 4, 1, COBBLE); m.set(5, 5, 1, COBBLE); m.set(5, 6, 1, COBBLE); // chimney
+  m.set(1, 0, 1, BED); m.set(4, 0, 1, TABLE); m.set(4, 0, 3, BENCH); m.set(1, 0, 3, SHELF + 3);
+  m.set(5, 1, 2, PICTURE + 3); m.set(1, 1, 2, CLOCK + 1); m.set(2, 0, 4, TORCH);
+  emit({ id: 'small-house', name: 'Small House', level: 3, gemCost: 0, rewardXp: 950, rewardGems: 10 }, m);
+}
+// --- Windmill (7x9x6, ~150) ---
+{
+  const m = new Model();
+  m.walls(1, 0, 1, 5, 5, 5, STONE_BRICK);
+  m.set(3, 0, 5, DOOR); m.set(3, 1, 5, DOOR_TOP);
+  m.set(1, 3, 3, GLASS); m.set(5, 3, 3, GLASS);
+  m.box(1, 6, 1, 5, 6, 5, ROOFING); m.box(2, 7, 2, 4, 7, 4, ROOFING); m.set(3, 8, 3, ROOFING);
+  m.set(3, 5, 0, FENCE); // hub on the back wall
+  for (let y = 6; y <= 8; y++) m.set(3, y, 0, FENCE);
+  for (let y = 2; y <= 4; y++) m.set(3, y, 0, FENCE);
+  for (let x = 0; x <= 2; x++) m.set(x, 5, 0, FENCE);
+  for (let x = 4; x <= 6; x++) m.set(x, 5, 0, FENCE);
+  for (const [x, y] of [[2, 6], [2, 7], [4, 3], [4, 4], [0, 4], [1, 4], [5, 6], [6, 6]]) m.set(x, y, 0, W_WHITE);
+  emit({ id: 'windmill', name: 'Windmill', level: 3, gemCost: 20, rewardXp: 1500, rewardGems: 12 }, m);
+}
+// --- Barn + animals (9x6x7, ~185) ---
+{
+  const m = new Model();
+  m.walls(0, 0, 0, 8, 2, 6, W_RED);
+  for (const x of [0, 8]) for (const z of [0, 6]) for (let y = 0; y <= 2; y++) m.set(x, y, z, PLANKS);
+  m.box(3, 0, 6, 5, 1, 6, 0); // big door opening
+  m.box(0, 3, 0, 8, 3, 6, ROOFING); m.box(1, 4, 1, 7, 4, 5, ROOFING); m.box(3, 5, 2, 5, 5, 4, ROOFING);
+  m.set(2, 2, 6, TORCH); m.set(6, 2, 6, TORCH);
+  m.set(1, 0, 1, W_YELLOW); m.set(7, 0, 1, W_YELLOW); m.set(1, 1, 1, W_YELLOW);
+  emit({ id: 'barn', name: 'Barn', level: 4, gemCost: 25, rewardXp: 1600, rewardGems: 12, spawns: ['cow', 'pig', 'sheep', 'chicken'] }, m);
+}
+// --- Market (13x4x9, ~200) ---
+{
+  const m = new Model();
+  m.box(0, 0, 0, 12, 0, 8, COBBLE);
+  const canopies = [W_RED, W_YELLOW, W_BLUE];
+  for (let k = 0; k < 3; k++) {
+    const x = 1 + k * 4;
+    for (const [px, pz] of [[x, 1], [x + 2, 1], [x, 3], [x + 2, 3]]) { m.set(px, 1, pz, FENCE); m.set(px, 2, pz, FENCE); }
+    m.box(x, 3, 1, x + 2, 3, 3, canopies[k]);
+    m.set(x + 1, 1, 2, TABLE);
+    m.set(x + 1, 1, 3, k === 0 ? PUMPKIN : k === 1 ? W_WHITE : PLANKS);
+  }
+  m.box(5, 1, 6, 7, 1, 8, COBBLE); m.set(6, 1, 7, WATER);
+  for (const [x, z] of [[0, 8], [12, 8], [0, 5], [12, 5]]) m.set(x, 1, z, TORCH);
+  for (const [x, z, f] of [[2, 6, FLOWER_RED], [3, 7, FLOWER_YELLOW], [2, 8, FLOWER_BLUE], [10, 6, FLOWER_YELLOW], [9, 7, FLOWER_BLUE], [10, 8, FLOWER_RED]]) m.set(x, 1, z, f);
+  m.set(1, 1, 5, PLANKS); m.set(11, 1, 5, PLANKS); m.set(1, 1, 6, W_YELLOW); m.set(11, 1, 6, PUMPKIN);
+  emit({ id: 'market', name: 'Market', level: 5, gemCost: 30, rewardXp: 2000, rewardGems: 15 }, m);
+}
+// --- Treehouse (9x13x9, ~225) ---
+{
+  const m = new Model();
+  m.box(3, 0, 3, 5, 6, 5, OAK_TRUNK);
+  for (let x = 1; x <= 7; x++) for (let z = 1; z <= 7; z++) {
+    const corner = (x === 1 || x === 7) && (z === 1 || z === 7);
+    const trunk = x >= 3 && x <= 5 && z >= 3 && z <= 5;
+    if (!corner && !trunk) m.set(x, 6, z, LEAVES);
+  }
+  m.box(2, 7, 2, 6, 7, 6, LEAVES); m.box(3, 8, 3, 5, 8, 5, LEAVES);
+  m.box(2, 9, 2, 6, 9, 6, PLANKS);
+  m.walls(2, 10, 2, 6, 11, 6, PLANKS);
+  m.set(4, 10, 6, DOOR); m.set(4, 11, 6, DOOR_TOP);
+  m.set(2, 11, 4, GLASS); m.set(6, 11, 4, GLASS);
+  m.box(2, 12, 2, 6, 12, 6, ROOFING);
+  for (let y = 0; y <= 9; y++) m.set(8, y, 4, FENCE);
+  m.set(3, 10, 3, BED); m.set(5, 10, 3, SHELF + 3); m.set(3, 11, 5, TORCH);
+  emit({ id: 'treehouse', name: 'Treehouse', level: 6, gemCost: 40, rewardXp: 2400, rewardGems: 18 }, m);
+}
+// --- Lighthouse (7x21x7, ~255) ---
+{
+  const m = new Model();
+  m.walls(0, 0, 0, 6, 0, 6, SAND);
+  m.box(1, 0, 1, 5, 1, 5, COBBLE);
+  for (let y = 2; y <= 15; y++) m.walls(2, y, 2, 4, y, 4, ((y - 2) >> 1) % 2 === 0 ? W_WHITE : W_RED);
+  m.set(3, 2, 4, DOOR); m.set(3, 3, 4, DOOR_TOP);
+  m.box(1, 16, 1, 5, 16, 5, PLANKS);
+  m.walls(1, 17, 1, 5, 17, 5, FENCE);
+  m.walls(2, 17, 2, 4, 18, 4, GLASS);
+  m.set(3, 17, 3, TORCH);
+  m.box(2, 19, 2, 4, 19, 4, ROOFING); m.set(3, 20, 3, ROOFING);
+  emit({ id: 'lighthouse', name: 'Lighthouse', level: 7, gemCost: 50, rewardXp: 3000, rewardGems: 20 }, m);
+}
+// --- Castle (13x8x11, ~400) ---
+{
+  const m = new Model();
+  m.walls(0, 0, 0, 12, 3, 10, STONE_BRICK);
+  m.box(6, 0, 10, 7, 2, 10, 0); // gate
+  for (let x = 0; x <= 12; x += 2) { m.set(x, 4, 0, STONE_BRICK); m.set(x, 4, 10, STONE_BRICK); }
+  for (let z = 2; z <= 8; z += 2) { m.set(0, 4, z, STONE_BRICK); m.set(12, 4, z, STONE_BRICK); }
+  for (const [x, z] of [[0, 0], [10, 0], [0, 8], [10, 8]]) {
+    m.walls(x, 0, z, x + 2, 6, z + 2, COBBLE);
+    m.box(x, 7, z, x + 2, 7, z + 2, STONE_BRICK);
+  }
+  m.walls(4, 0, 3, 8, 3, 7, STONE_BRICK);
+  m.set(6, 0, 7, DOOR); m.set(6, 1, 7, DOOR_TOP);
+  m.box(4, 4, 3, 8, 4, 7, ROOFING);
+  m.set(6, 5, 5, FENCE); m.set(6, 6, 5, W_RED);
+  m.set(5, 3, 10, TORCH); m.set(8, 3, 10, TORCH);
+  m.set(5, 0, 5, TABLE); m.set(7, 0, 5, CHANDELIER);
+  emit({ id: 'castle', name: 'Castle', level: 8, gemCost: 80, rewardXp: 5000, rewardGems: 30 }, m);
+}
+// --- Rocket (8x22x8, ~300) ---
+{
+  const m = new Model();
+  m.box(0, 0, 0, 7, 0, 7, STONE_BRICK);
+  for (let y = 1; y <= 16; y++) m.walls(2, y, 2, 5, y, 5, y % 5 === 0 ? W_RED : W_WHITE);
+  m.set(3, 8, 5, GLASS); m.set(4, 8, 5, GLASS); m.set(3, 13, 5, GLASS);
+  m.box(2, 17, 2, 5, 17, 5, W_RED); m.box(3, 18, 3, 4, 18, 4, W_RED); m.set(3, 19, 3, W_RED); m.set(3, 20, 3, W_RED);
+  for (const [x, z] of [[1, 3], [6, 3], [3, 1], [3, 6]]) { m.box(x, 1, z, x, 3, z, W_RED); m.set(x, 4, z, W_RED); }
+  for (let y = 1; y <= 16; y++) m.set(7, y, 3, COBBLE);
+  m.set(6, 8, 3, PLANKS); m.set(6, 13, 3, PLANKS); m.set(6, 16, 3, PLANKS);
+  for (const [x, z] of [[0, 0], [7, 0], [0, 7], [7, 7]]) m.set(x, 1, z, TORCH);
+  emit({ id: 'rocket', name: 'Rocket', level: 9, gemCost: 100, rewardXp: 5000, rewardGems: 30 }, m);
+}
+// --- Big Clock Tower (7x23x7, ~480) ---
+{
+  const m = new Model();
+  m.box(0, 0, 0, 6, 2, 6, STONE_BRICK);
+  for (let y = 3; y <= 18; y++) m.walls(1, y, 1, 5, y, 5, y % 4 === 0 ? COBBLE : STONE_BRICK);
+  m.set(3, 3, 5, DOOR); m.set(3, 4, 5, DOOR_TOP);
+  m.set(3, 8, 5, GLASS); m.set(3, 12, 5, GLASS); m.set(1, 10, 3, GLASS); m.set(5, 10, 3, GLASS);
+  m.set(3, 16, 6, CLOCK); m.set(3, 16, 0, CLOCK + 2); m.set(6, 16, 3, CLOCK + 1); m.set(0, 16, 3, CLOCK + 3);
+  m.walls(0, 15, 0, 6, 15, 6, FENCE);
+  m.box(2, 15, 2, 4, 15, 4, PLANKS);
+  m.box(1, 19, 1, 5, 19, 5, ROOFING); m.box(2, 20, 2, 4, 20, 4, ROOFING); m.set(3, 21, 3, ROOFING); m.set(3, 22, 3, FENCE);
+  for (const [x, z] of [[0, 6], [6, 6], [2, 6], [4, 6]]) m.set(x, 3, z, TORCH);
+  m.set(3, 5, 3, CHANDELIER);
+  emit({ id: 'clock-tower', name: 'Big Clock Tower', level: 10, gemCost: 150, rewardXp: 8000, rewardGems: 40 }, m);
 }
 
 const index = `// Generated by tools/gen-buildings.mjs. Order = catalogue order.

@@ -67,7 +67,8 @@ export function createHUD(container, avatarFaceCanvas, cb) {
 
   const camBtn = button({ id: 'btn-camera', icon: 'camera' });
   pressable(camBtn, null, () => cb.onCamera?.());
-  const mapBtn = button({ id: 'btn-map', icon: 'map', disabled: true });
+  const mapBtn = button({ id: 'btn-map', icon: 'map' });
+  pressable(mapBtn, null, () => cb.onMap?.());
   tl.append(pauseBtn, pill, camBtn, mapBtn);
 
   // --- top-right gems ---
@@ -99,7 +100,8 @@ export function createHUD(container, avatarFaceCanvas, cb) {
   rs.append(buildBtn, flyBtn, jumpBtn, downBtn);
 
   // --- bottom-right inventory ---
-  const invBtn = button({ id: 'btn-inventory', icon: 'grid', disabled: true });
+  const invBtn = button({ id: 'btn-inventory', icon: 'grid' });
+  pressable(invBtn, null, () => cb.onInventory?.());
 
   // --- placement bar (top-centre while positioning a blueprint) ---
   const placement = document.createElement('div');

@@ -6,6 +6,8 @@ export const KEYS = {
   meta: 'bv:meta',
   buildings: 'bv:buildings',
   profiles: 'bv:profiles',
+  life: 'bv:life',
+  custom: 'bv:custom',
 };
 
 export async function loadKey(key) {
@@ -104,6 +106,7 @@ export function createAutosaver({ delayMs, savers, onSaved }) {
     const keys = [...dirty];
     dirty.clear();
     try {
+      for (const k of keys) if (!KEYS[k] || !savers[k]) throw new Error('unknown save key ' + k);
       await Promise.all(keys.map((k) => set(KEYS[k], savers[k]())));
       onSaved?.(true, keys);
     } catch (e) {

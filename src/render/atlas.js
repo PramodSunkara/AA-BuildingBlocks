@@ -347,6 +347,54 @@ const PAINTERS = {
     t.ring('#2E8A3A');
     t.rect(4, 4, 8, 8, '#5CB86A', 0.04);
   },
+  [TILE.DARK_PLANKS]: (t) => {
+    PAINTERS[TILE.PLANKS](t);
+    for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) t.mul(x, y, 0.62);
+  },
+  [TILE.DOOR_BOTTOM]: (t) => {
+    t.fill('#8E6530', 0.05);
+    t.ring('#5E4020');
+    t.rect(3, 2, 10, 5, '#A6783C', 0.04); t.rect(3, 9, 10, 5, '#A6783C', 0.04);
+    for (let x = 3; x < 13; x++) { t.px(x, 2, '#6E4A22'); t.px(x, 9, '#6E4A22'); }
+    t.px(11, 8, '#F2C230'); t.px(12, 8, '#F2C230');
+  },
+  [TILE.DOOR_TOP]: (t) => {
+    t.fill('#8E6530', 0.05);
+    t.ring('#5E4020');
+    t.rect(3, 9, 10, 5, '#A6783C', 0.04);
+    for (let x = 3; x < 13; x++) t.px(x, 9, '#6E4A22');
+    t.rect(4, 2, 8, 5, '#5E4020');
+    t.rect(5, 3, 6, 3, '#BFE3FF');
+    t.px(8, 3, '#5E4020'); t.px(8, 4, '#5E4020'); t.px(8, 5, '#5E4020');
+  },
+  [TILE.PICTURE]: (t) => {
+    t.fill('#5E4020');
+    t.rect(1, 1, 14, 14, '#7FC2F0');
+    t.rect(1, 9, 14, 6, '#5FB33A', 0.06);
+    t.rect(1, 8, 6, 1, '#3E8E2C'); t.rect(9, 7, 6, 2, '#3E8E2C');
+    t.rect(11, 2, 3, 3, '#F2C230'); t.px(12, 2, '#FFE070');
+    t.rect(4, 5, 1, 4, '#5C3F22'); t.rect(2, 3, 5, 3, '#3E8E2C'); t.px(4, 2, '#3E8E2C');
+    t.rect(2, 11, 3, 1, '#D9403A');
+  },
+  [TILE.CLOCK]: (t) => {
+    t.fill('#5E4020');
+    for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
+      const d = Math.hypot(x - 7.5, y - 7.5);
+      if (d < 7.2) t.px(x, y, d > 6.2 ? '#2A2A2A' : '#F2F2F2');
+    }
+    for (const [x, y] of [[7, 2], [8, 2], [13, 7], [13, 8], [7, 13], [8, 13], [2, 7], [2, 8]]) t.px(x, y, '#2A2A2A');
+    t.rect(7, 4, 2, 4, '#2A2A2A'); t.rect(8, 7, 4, 2, '#2A2A2A'); t.px(7, 7, '#D9403A'); t.px(8, 8, '#D9403A');
+  },
+  [TILE.BOOKS]: (t) => {
+    const cols = [P.wool[0], P.wool[2], P.wool[3], P.wool[1], P.wool[4], P.wool[9], P.wool[7], P.wool[8]];
+    let x = 0, i = 0;
+    while (x < 16) {
+      const w = 1 + (i % 2);
+      t.rect(x, 0, w, 16, cols[i % cols.length], 0.05);
+      t.rect(x, 2, w, 1, '#2A2A2A'); t.rect(x, 12, w, 1, '#2A2A2A');
+      x += w; i++;
+    }
+  },
   [TILE.CRACK_0]: crackPainter(0),
   [TILE.CRACK_1]: crackPainter(1),
   [TILE.CRACK_2]: crackPainter(2),

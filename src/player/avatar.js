@@ -60,7 +60,7 @@ export class Avatar {
   }
 
   // speed: 0..1.6 (normalised to walk speed). lookYaw/pitch in radians.
-  update(dt, { x, y, z, speed, onGround, flying, lookYaw, lookPitch, moving, moveYaw }) {
+  update(dt, { x, y, z, speed, onGround, flying, lookYaw, lookPitch, moving, moveYaw, wave = false }) {
     this.time += dt;
     this.group.position.set(x, y, z);
 
@@ -93,6 +93,10 @@ export class Avatar {
     this.armL.rotation.x = swing * (1 - air);
     this.armR.rotation.z = 0.08 + (flying ? 2.6 : 1.6) * air;
     this.armL.rotation.z = -0.08 - (flying ? 2.6 : 1.6) * air;
+    if (wave) {
+      this.armR.rotation.x = 0;
+      this.armR.rotation.z = 2.7 + Math.sin(this.time * 14) * 0.45;
+    }
 
     // idle bob and breathing
     const idle = 1 - Math.min(1, s * 3);

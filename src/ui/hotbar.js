@@ -1,6 +1,6 @@
 import { gsap } from 'gsap';
 
-export function createHotbar(container, iconRenderer, slots, onSelect) {
+export function createHotbar(container, iconRenderer, slots, onSelect, onChange) {
   const el = document.createElement('div');
   el.id = 'hotbar';
   el.className = 'panel';
@@ -13,10 +13,38 @@ export function createHotbar(container, iconRenderer, slots, onSelect) {
     const s = document.createElement('div');
     s.className = 'slot';
     s.dataset.index = i;
+    // tap selects; dragging more than 10 px lifts the icon and drops it on another slot (swap)
     s.addEventListener('pointerdown', (e) => {
       e.preventDefault();
       e.stopPropagation();
-      select(i);
+      const x0 = e.clientX, y0 = e.clientY;
+      let ghost = null;
+      const move = (ev) => {
+        if (!ghost && Math.hypot(ev.clientX - x0, ev.clientY - y0) > 10) {
+          ghost = document.createElement('div');
+          ghost.className = 'drag-ghost';
+          const c = s.querySelector('canvas');
+          if (c) ghost.appendChild(c.cloneNode(true)) && ghost.firstChild.getContext('2d').drawImage(c, 0, 0);
+          document.body.appendChild(ghost);
+          s.classList.add('dragging');
+        }
+        if (ghost) ghost.style.transform = `translate(${ev.clientX - 28}px, ${ev.clientY - 28}px)`;
+      };
+      const up = (ev) => {
+        s.removeEventListener('pointermove', move);
+        s.removeEventListener('pointerup', up);
+        s.removeEventListener('pointercancel', up);
+        try { s.releasePointerCapture(e.pointerId); } catch { /* ignore */ }
+        if (!ghost) { select(i); return; }
+        ghost.remove();
+        s.classList.remove('dragging');
+        const under = document.elementFromPoint(ev.clientX, ev.clientY)?.closest?.('.slot');
+        if (under && under !== s) swap(i, parseInt(under.dataset.index, 10));
+      };
+      try { s.setPointerCapture(e.pointerId); } catch { /* ignore */ }
+      s.addEventListener('pointermove', move);
+      s.addEventListener('pointerup', up);
+      s.addEventListener('pointercancel', up);
     });
     el.appendChild(s);
     slotEls.push(s);
@@ -56,6 +84,16 @@ export function createHotbar(container, iconRenderer, slots, onSelect) {
     state.slots[i] = blockId;
     renderSlot(i);
     gsap.fromTo(slotEls[i], { scale: 0.85 }, { scale: 1, duration: 0.25, ease: 'back.out(2)' });
+    onChange?.(state.slots.slice());
+  }
+
+  function swap(a, b) {
+    [state.slots[a], state.slots[b]] = [state.slots[b], state.slots[a]];
+    renderSlot(a);
+    renderSlot(b);
+    gsap.fromTo([slotEls[a], slotEls[b]], { scale: 0.85 }, { scale: 1, duration: 0.3, ease: 'back.out(2)' });
+    select(b);
+    onChange?.(state.slots.slice());
   }
 
   select(0, false);

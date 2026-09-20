@@ -72,6 +72,14 @@ export function createOverlays(container) {
     };
   }
 
+  function flash(text, hold = 1.2) {
+    levelEl.textContent = text;
+    levelEl.style.display = '';
+    gsap.killTweensOf(levelEl);
+    gsap.fromTo(levelEl, { scale: 0.3, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.45, ease: 'back.out(1.8)' });
+    gsap.to(levelEl, { scale: 0.8, opacity: 0, duration: 0.25, delay: hold, ease: 'power2.in', onComplete: () => (levelEl.style.display = 'none') });
+  }
+
   function levelUp(level) {
     levelEl.textContent = `LEVEL ${level}!`;
     levelEl.style.display = '';
@@ -118,5 +126,5 @@ export function createOverlays(container) {
     }
   }
 
-  return { celebrate, levelUp, confirmRemove, flyGems, spawnConfetti };
+  return { celebrate, levelUp, flash, confirmRemove, flyGems, spawnConfetti };
 }

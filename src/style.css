@@ -151,3 +151,46 @@ body {
 .btn.confirm { background: rgba(63, 163, 77, 0.7); }
 .btn.deny { background: rgba(217, 64, 58, 0.7); }
 .flying-gem { position: fixed; left: -15px; top: -15px; pointer-events: none; z-index: 8; }
+
+/* ---------- Stage 3: inventory, minimap, toast, bubbles ---------- */
+.backdrop.soft { background: rgba(0, 0, 0, 0.3); z-index: 2; }
+#hotbar { z-index: 3; }
+.sheet {
+  position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(var(--sa-bottom) + 100px);
+  width: min(720px, 92vw); max-height: 52vh; z-index: 3; display: flex; flex-direction: column; overflow: hidden;
+  background: rgba(40, 44, 52, 0.82);
+}
+.tabs { display: flex; gap: 6px; padding: 8px 10px 0; }
+.tab {
+  display: flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 12px 12px 0 0; font-size: 18px;
+  background: rgba(255, 255, 255, 0.08); border: 1.5px solid transparent; border-bottom: none; cursor: pointer;
+}
+.tab.active { background: rgba(255, 255, 255, 0.22); border-color: rgba(255, 255, 255, 0.35); }
+.tab canvas { image-rendering: pixelated; }
+.tabs.mini { padding: 0; margin-right: 10px; }
+.tabs.mini .tab { border-radius: 10px; padding: 6px 10px; border-bottom: 1.5px solid transparent; }
+.tabs.mini .tab.active { border-color: rgba(255, 255, 255, 0.35); }
+.inv-grid { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; touch-action: pan-y; padding: 10px 12px 14px; display: grid; grid-template-columns: repeat(auto-fill, 72px); gap: 8px; justify-content: center; background: rgba(255, 255, 255, 0.06); }
+.inv-item { width: 72px; height: 72px; border-radius: 12px; border: 2px solid rgba(255, 255, 255, 0.25); background: rgba(0, 0, 0, 0.25); display: flex; align-items: center; justify-content: center; touch-action: pan-y; }
+.inv-item canvas { image-rendering: pixelated; }
+.slot.dragging { opacity: 0.35; }
+.drag-ghost { position: fixed; left: 0; top: 0; pointer-events: none; z-index: 20; filter: drop-shadow(0 6px 8px rgba(0, 0, 0, 0.5)); }
+.drag-ghost canvas { image-rendering: pixelated; }
+.save-card .save-icon { width: 140px; height: 140px; display: flex; align-items: center; justify-content: center; }
+
+#minimap { z-index: 6; }
+.map-box { padding: 10px; }
+.map-box canvas { display: block; border-radius: 8px; image-rendering: pixelated; }
+
+#toast {
+  position: absolute; left: var(--sa-left); bottom: var(--sa-bottom); display: flex; align-items: center; gap: 10px;
+  padding: 10px 16px; font-size: 20px; font-weight: 700; z-index: 9; background: rgba(63, 163, 77, 0.8); cursor: pointer;
+}
+#bubbles { position: fixed; inset: 0; pointer-events: none; z-index: 2; }
+.bubble {
+  position: absolute; transform: translate(-50%, -100%); background: #fff; color: #222; border-radius: 14px;
+  padding: 4px 10px; font-size: 26px; line-height: 1.2; text-shadow: none; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+}
+.bubble::after { content: ''; position: absolute; left: 50%; bottom: -8px; margin-left: -6px; border: 6px solid transparent; border-top-color: #fff; border-bottom: 0; }
+#water-tint { position: fixed; inset: 0; pointer-events: none; background: rgba(40, 110, 200, 0.35); opacity: 0; z-index: 1; }
+.start-version { font-size: 16px; opacity: 0.7; }

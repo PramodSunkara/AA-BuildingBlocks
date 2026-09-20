@@ -17,6 +17,8 @@ export function setupDesktop({ canvas, actions }) {
       case 'F3': actions.toggleDebug(); e.preventDefault(); break;
       case 'Escape': actions.escape?.(); break;
       case 'KeyB': actions.build?.(); break;
+      case 'KeyE': actions.inventory?.(); break;
+      case 'KeyM': actions.map?.(); break;
       case 'Tab': e.preventDefault(); break;
       default:
         if (/^Digit[1-6]$/.test(e.code)) actions.selectSlot(parseInt(e.code[5], 10) - 1);

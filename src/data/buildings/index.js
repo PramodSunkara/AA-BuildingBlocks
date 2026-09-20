@@ -5,6 +5,15 @@ import fenceGarden from './fence-garden.js';
 import farm from './farm.js';
 import tower from './tower.js';
 import stoneHut from './stone-hut.js';
+import smallHouse from './small-house.js';
+import windmill from './windmill.js';
+import barn from './barn.js';
+import market from './market.js';
+import treehouse from './treehouse.js';
+import lighthouse from './lighthouse.js';
+import castle from './castle.js';
+import rocket from './rocket.js';
+import clockTower from './clock-tower.js';
 
-export const BUILDINGS = [well, hut, fenceGarden, farm, tower, stoneHut];
+export const BUILDINGS = [well, hut, fenceGarden, farm, tower, stoneHut, smallHouse, windmill, barn, market, treehouse, lighthouse, castle, rocket, clockTower];
 export const BUILDING_BY_ID = Object.fromEntries(BUILDINGS.map((b) => [b.id, b]));

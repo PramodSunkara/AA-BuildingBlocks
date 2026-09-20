@@ -9,12 +9,13 @@ import { World } from './world/world.js';
 import { generateTerrain } from './world/terrain.js';
 import { ChunkRenderer } from './world/chunkRenderer.js';
 import { raycastVoxels } from './world/raycast.js';
-import { loadWorldSave, applyWorldSave, serializeWorld, createAutosaver, loadMeta, loadKey } from './world/save.js';
+import { loadWorldSave, applyWorldSave, serializeWorld, createAutosaver, loadMeta, loadKey, KEYS } from './world/save.js';
 import { buildAtlas } from './render/atlas.js';
 import { createMaterials } from './render/materials.js';
 import { createRenderer } from './render/renderer.js';
 import { createLighting } from './render/lighting.js';
 import { createSky } from './render/sky.js';
+import { createDayNight } from './render/daynight.js';
 import { Particles } from './render/particles.js';
 import { Highlight } from './render/highlight.js';
 import { createEdgeWalls } from './render/walls.js';
@@ -33,12 +34,24 @@ import { createDebugOverlay } from './ui/debug.js';
 import { createCatalogue } from './ui/catalogue.js';
 import { createProgressBar } from './ui/progressBar.js';
 import { createOverlays } from './ui/overlays.js';
+import { createInventory } from './ui/inventory.js';
+import { createMinimap } from './ui/minimap.js';
+import { createToast } from './ui/toast.js';
+import { createBubbles } from './ui/bubbles.js';
 import { iconSVG } from './ui/icons.js';
 import { createAudio } from './audio/audio.js';
-import { blockById, HOTBAR_DEFAULT, REPLACEABLE, LIQUID, AIR, GHOST } from './data/blocks.js';
+import {
+  blockById, HOTBAR_DEFAULT, REPLACEABLE, LIQUID, AIR, GHOST, SOLID, FACING_DIR, doorId3, isAnimalItem,
+} from './data/blocks.js';
+import { SPECIES } from './data/animals.js';
 import { BUILDING_BY_ID } from './data/buildings/index.js';
 import { BuildingManager, isGround } from './game/buildings.js';
 import { Progression, createProfileState } from './game/progression.js';
+import { AnimalManager } from './game/animals.js';
+import { VillagerManager } from './game/villagers.js';
+import { WheatGrowth } from './game/wheat.js';
+import { TorchLights } from './game/lights.js';
+import { captureRegion } from './game/customBuildings.js';
 
 const canvas = document.getElementById('c');
 const hudEl = document.getElementById('hud');
@@ -48,6 +61,10 @@ const startPlay = document.getElementById('start-play');
 
 async function boot() {
   startPlay.innerHTML = iconSVG('play', 48);
+  const ver = document.createElement('div');
+  ver.className = 'start-version';
+  ver.textContent = 'v' + CONFIG.version;
+  startPlay.parentElement.appendChild(ver);
   const audio = createAudio();
 
   // --- renderer, atlas, materials ---
@@ -64,22 +81,47 @@ async function boot() {
   const save = await loadWorldSave();
   const editCount = save ? applyWorldSave(world, save) : 0;
 
-  // --- persistence (world, buildings, profiles share one debounced autosaver) ---
+  const scene = new THREE.Scene();
+
+  // --- persistence (world, buildings, profiles, life, custom share one debounced autosaver) ---
   const buildings = new BuildingManager(world);
+  const animals = new AnimalManager(scene, world);
+  const villagers = new VillagerManager(scene, world, buildings);
+  const wheat = new WheatGrowth(world);
+  const torchLights = new TorchLights(scene, world, 8);
+  const customTypes = [];
   const profiles = (await loadKey('profiles')) || {};
   const profileId = profiles.current || 'p1';
   if (!profiles[profileId]) profiles[profileId] = createProfileState(profileId);
   profiles.current = profileId;
   const profileState = profiles[profileId];
+  if (!profileState.settings) profileState.settings = createProfileState(profileId).settings;
+  if (!Array.isArray(profileState.hotbar) || profileState.hotbar.length !== 6) profileState.hotbar = HOTBAR_DEFAULT.slice();
   const autosaver = createAutosaver({
     delayMs: CONFIG.autosaveDelayMs,
-    savers: { world: () => serializeWorld(world), buildings: () => buildings.serialize(), profiles: () => profiles, meta: () => meta },
+    savers: {
+      world: () => serializeWorld(world),
+      buildings: () => buildings.serialize(),
+      profiles: () => profiles,
+      meta: () => meta,
+      life: () => ({ version: 1, wheat: wheat.serialize(), animals: animals.serialize(), villagers: villagers.serialize(), timeOfDay: dayNight.time }),
+      custom: () => ({ version: 1, types: customTypes }),
+    },
     onSaved: (ok, keys) => debug.set('saved', `${ok} ${keys.join(',')}`),
   });
   world.onChange = () => autosaver.markDirty('world');
+  world.onBlockChanged = (x, y, z, id, prev) => {
+    wheat.onBlockChanged(x, y, z, id, prev);
+    torchLights.onBlockChanged(x, y, z, id);
+  };
   buildings.onChange = () => autosaver.markDirty('buildings');
+  animals.onChange = () => autosaver.markDirty('life');
+  villagers.onChange = () => autosaver.markDirty('life');
+  wheat.onChange = () => autosaver.markDirty('life');
   const progression = new Progression(profileState, () => autosaver.markDirty('profiles'));
 
+  const cSave = await loadKey('custom');
+  if (cSave && Array.isArray(cSave.types)) for (const t of cSave.types) { customTypes.push(t); buildings.registerType(t); }
   const bSave = await loadKey('buildings');
   if (bSave && bSave.initialized) buildings.load(bSave);
   else {
@@ -88,10 +130,19 @@ async function boot() {
     buildings.place(BUILDING_BY_ID.well, 67, y, 59);
     buildings.place(BUILDING_BY_ID.hut, 56, y, 58);
   }
+  const lifeSave = await loadKey('life');
+  torchLights.scan();
+  if (lifeSave) {
+    wheat.load(lifeSave.wheat);
+    animals.load(lifeSave.animals);
+    villagers.load(lifeSave.villagers);
+  }
 
-  const scene = new THREE.Scene();
   const sky = createSky(scene);
   const lighting = createLighting(scene);
+  const dayNight = createDayNight({ sky, lighting });
+  dayNight.setAlwaysDay(profileState.settings.alwaysDay !== false);
+  if (lifeSave && typeof lifeSave.timeOfDay === 'number') dayNight.time = lifeSave.timeOfDay;
   const chunkRenderer = new ChunkRenderer(world, scene, materials);
   chunkRenderer.buildAll();
 
@@ -110,6 +161,11 @@ async function boot() {
   const particles = new Particles(scene);
   const walls = createEdgeWalls(scene);
 
+  // villagers: one per level gained across profiles
+  const levelUps = Object.values(profiles).filter((p) => p && typeof p === 'object' && typeof p.xp === 'number').reduce((n, p) => n + (new Progression(p).level - 1), 0);
+  const spawnPoint = () => ({ x: sp.x + (Math.random() - 0.5) * 8, z: sp.z + 4 + Math.random() * 6 });
+  villagers.ensureCount(levelUps, spawnPoint);
+
   // --- HUD ---
   const faceCanvas = document.createElement('canvas');
   faceCanvas.width = faceCanvas.height = 80;
@@ -118,7 +174,7 @@ async function boot() {
   fctx.imageSmoothingEnabled = false;
   fctx.drawImage(skin.canvas, 8, 8, 8, 8, 0, 0, 80, 80);
 
-  let mode = 'play'; // 'play' | 'placing' | 'celebrating' | 'dialog'
+  let mode = 'play'; // 'play' | 'placing' | 'celebrating' | 'dialog' | 'selecting'
   const debug = createDebugOverlay(hudEl);
   const hud = createHUD(hudEl, faceCanvas, {
     onPause: () => setPaused(true),
@@ -130,19 +186,51 @@ async function boot() {
     onDescendUp: () => { player.descendHeld = false; },
     onDebugToggle: () => debug.toggle(),
     onBuild: () => openCatalogue(),
-    onCancelPlacement: () => cancelPlacement(),
+    onCancelPlacement: () => { if (mode === 'selecting') cancelSelection(); else cancelPlacement(); },
+    onMap: () => { if (mode === 'play' && !paused) { audio.tap(); inventory.close(); minimap.toggle(); } },
+    onInventory: () => { if (mode === 'play' && !paused) { audio.tap(); inventory.toggle(); } },
   });
-  const iconRenderer = createBlockIconRenderer(atlas, 56);
+  const blockIcons = createBlockIconRenderer(atlas, 56);
+  const animalIconCache = new Map();
+  function animalIcon(itemId, size) {
+    const k = itemId + ':' + size;
+    if (animalIconCache.has(k)) return animalIconCache.get(k);
+    const species = itemId.slice(7);
+    const src = animals.texture(species).canvas;
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    const cv = document.createElement('canvas');
+    cv.width = cv.height = size * dpr;
+    cv.style.width = cv.style.height = size + 'px';
+    const ctx = cv.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.imageSmoothingEnabled = false;
+    ctx.fillStyle = SPECIES[species].base;
+    ctx.beginPath(); ctx.roundRect(4, 4, size - 8, size - 8, 10); ctx.fill();
+    const m = Math.round(size * 0.18);
+    ctx.drawImage(src, 16, 0, 8, 8, m, m, size - 2 * m, size - 2 * m);
+    animalIconCache.set(k, cv);
+    return cv;
+  }
+  const icons = { render: (item, size = 56) => (isAnimalItem(item) ? animalIcon(item, size) : blockIcons.render(item)) };
   const buildingIcons = createBuildingIconRenderer(atlas);
-  const hotbar = createHotbar(hudEl, iconRenderer, HOTBAR_DEFAULT, () => audio.tap());
+  const hotbar = createHotbar(hudEl, icons, profileState.hotbar, () => audio.tap(), (slots) => { profileState.hotbar = slots; autosaver.markDirty('profiles'); });
   const progressBar = createProgressBar(hudEl);
   const overlays = createOverlays(hudEl);
+  const bubbles = createBubbles(hudEl);
+  const toast = createToast(hudEl);
+  const waterTint = document.createElement('div');
+  waterTint.id = 'water-tint';
+  hudEl.appendChild(waterTint);
   const catalogue = createCatalogue(hudEl, {
     icons: buildingIcons, progression, audio,
     onPick: (b) => startPlacement(b),
     onNeedGems: () => hud.flashGems(),
-    onOpen: () => touch.releaseAll(),
+    onOpen: () => { touch.releaseAll(); inventory.close(); },
+    getCustom: () => customTypes,
+    onSaveBuild: () => startSelection(),
   });
+  const inventory = createInventory(hudEl, { icons, hotbar, audio, onOpen: () => touch.releaseAll() });
+  const minimap = createMinimap(hudEl, { world, atlas, buildings, buildingIcons, animals, villagers, player });
   let shownGems = profileState.gems;
   hud.setLevel(progression.level, progression.progress.frac);
   hud.setGems(shownGems);
@@ -163,6 +251,8 @@ async function boot() {
   function setPaused(p) {
     paused = p;
     touch.releaseAll();
+    inventory.close();
+    minimap.close();
     pauseEl.style.display = p ? '' : 'none';
     if (p) gsap.fromTo(pauseEl.firstChild, { scale: 0.9, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.25, ease: 'back.out(1.7)' });
     else last = performance.now();
@@ -174,35 +264,115 @@ async function boot() {
   const ndc = new THREE.Vector2();
   const getBlock = world.getBlock.bind(world);
   const targetable = (id) => id !== AIR && !LIQUID[id];
-  function targetAt(sx, sy, maxReach = CONFIG.player.reach) {
+  const targetableWithLiquid = (id) => id !== AIR;
+  function screenRay(sx, sy) {
     ndc.set((sx / R.width) * 2 - 1, -(sy / R.height) * 2 + 1);
     raycaster.setFromCamera(ndc, camera);
-    const o = raycaster.ray.origin, d = raycaster.ray.direction;
+    return raycaster.ray;
+  }
+  function targetAt(sx, sy, maxReach = CONFIG.player.reach, includeLiquid = false) {
+    const ray = screenRay(sx, sy);
+    const o = ray.origin, d = ray.direction;
     const eye = player.eye();
     const camDist = Math.hypot(o.x - eye.x, o.y - eye.y, o.z - eye.z);
-    const hit = raycastVoxels(getBlock, o.x, o.y, o.z, d.x, d.y, d.z, camDist + maxReach + 1, targetable);
+    const hit = raycastVoxels(getBlock, o.x, o.y, o.z, d.x, d.y, d.z, camDist + maxReach + 1, includeLiquid ? targetableWithLiquid : targetable);
     if (!hit) return null;
     hit.eyeDist = Math.hypot(hit.x + 0.5 - eye.x, hit.y + 0.5 - eye.y, hit.z + 0.5 - eye.z);
     if (hit.eyeDist > maxReach + 0.7) return null;
     return hit;
   }
+  // Nearest animal or villager under a screen point within reach (and in front of any block hit).
+  function entityAt(sx, sy) {
+    const ray = screenRay(sx, sy);
+    const o = ray.origin, d = ray.direction;
+    const eye = player.eye();
+    const camDist = Math.hypot(o.x - eye.x, o.y - eye.y, o.z - eye.z);
+    const maxDist = camDist + CONFIG.player.reach + 1;
+    const a = animals.raycast(o.x, o.y, o.z, d.x, d.y, d.z, maxDist);
+    const v = villagers.raycast(o.x, o.y, o.z, d.x, d.y, d.z, maxDist);
+    const best = a && (!v || a.dist < v.dist) ? { kind: 'animal', animal: a.animal, dist: a.dist } : v ? { kind: 'villager', villager: v.villager, dist: v.dist } : null;
+    if (!best) return null;
+    const block = raycastVoxels(getBlock, o.x, o.y, o.z, d.x, d.y, d.z, best.dist, (id) => id !== AIR && !LIQUID[id] && id !== GHOST);
+    if (block) return null;
+    return best;
+  }
   const projected = new THREE.Vector3();
   function toScreen(x, y, z) {
     projected.set(x, y, z).project(camera);
-    return { x: ((projected.x + 1) / 2) * R.width, y: ((1 - projected.y) / 2) * R.height };
+    return { x: ((projected.x + 1) / 2) * R.width, y: ((1 - projected.y) / 2) * R.height, behind: projected.z > 1 };
+  }
+
+  // --- placing blocks, animals, doors, oriented items ---
+  function facingFromYaw() {
+    const fx = Math.sin(player.yaw), fz = Math.cos(player.yaw); // direction from the item toward the player
+    let best = 0, bestDot = -Infinity;
+    for (let f = 0; f < 4; f++) {
+      const dot = FACING_DIR[f][0] * fx + FACING_DIR[f][1] * fz;
+      if (dot > bestDot) { bestDot = dot; best = f; }
+    }
+    return best;
+  }
+  function facingFromNormal(nx, nz) {
+    for (let f = 0; f < 4; f++) if (FACING_DIR[f][0] === nx && FACING_DIR[f][1] === nz) return f;
+    return facingFromYaw();
   }
 
   function tryPlace(hit) {
+    const item = hotbar.selectedBlock;
+    if (isAnimalItem(item)) { spawnAnimal(item.slice(7), hit); return; }
     let px = hit.x + hit.nx, py = hit.y + hit.ny, pz = hit.z + hit.nz;
     if (REPLACEABLE[hit.id]) { px = hit.x; py = hit.y; pz = hit.z; }
     if (!world.inBounds(px, py, pz) || py < CONFIG.world.digLimitY) return;
     if (!REPLACEABLE[world.getBlock(px, py, pz)]) return;
-    const id = hotbar.selectedBlock;
-    const block = blockById(id);
+    let id = item;
+    let block = blockById(id);
+    if (block.wall) {
+      // wall items hang on the face they were placed against
+      const facing = hit.ny === 0 && !REPLACEABLE[hit.id] ? facingFromNormal(hit.nx, hit.nz) : facingFromYaw();
+      id = block.variants[facing];
+      block = blockById(id);
+    } else if (block.variants) {
+      id = block.variants[facingFromYaw()];
+      block = blockById(id);
+    }
+    if (block.door) {
+      if (!world.inBounds(px, py + 1, pz) || !REPLACEABLE[world.getBlock(px, py + 1, pz)]) return;
+      if (player.overlapsCell(px, py, pz) || player.overlapsCell(px, py + 1, pz)) return;
+      const sideX = SOLID[world.getBlock(px - 1, py, pz)] || SOLID[world.getBlock(px + 1, py, pz)];
+      const sideZ = SOLID[world.getBlock(px, py, pz - 1)] || SOLID[world.getBlock(px, py, pz + 1)];
+      const axis = sideX && !sideZ ? 'x' : sideZ && !sideX ? 'z' : (facingFromYaw() % 2 === 0 ? 'x' : 'z');
+      world.setBlock(px, py, pz, doorId3(axis, false, false));
+      world.setBlock(px, py + 1, pz, doorId3(axis, false, true));
+      highlight.playPop(px, py, pz, doorId3(axis, false, false));
+      audio.place('wood');
+      return;
+    }
     if (block.solid && player.overlapsCell(px, py, pz)) return;
     if (!world.setBlock(px, py, pz, id)) return;
     highlight.playPop(px, py, pz, id);
     audio.place(block.sound);
+  }
+
+  function spawnAnimal(species, hit) {
+    const x = hit.x + hit.nx + 0.5, z = hit.z + hit.nz + 0.5;
+    const gy = animals.groundAt(Math.floor(x), Math.floor(z));
+    if (gy < 1) return;
+    const a = animals.spawn(species, x, gy + 1, z);
+    if (!a) { audio.error(); hud.flashGems(); return; }
+    a.bump = 1;
+    particles.burst(Math.floor(x), gy + 1, Math.floor(z), [1, 1, 1], 8);
+    audio.animal(species);
+  }
+
+  function toggleDoor(hit) {
+    const b = blockById(hit.id);
+    const bottomY = b.door.top ? hit.y - 1 : hit.y;
+    const open = !b.door.open;
+    const lower = doorId3(b.door.axis, open, false), upper = doorId3(b.door.axis, open, true);
+    if (!open && (player.overlapsCell(hit.x, bottomY, hit.z) || player.overlapsCell(hit.x, bottomY + 1, hit.z))) return;
+    world.setBlock(hit.x, bottomY, hit.z, lower);
+    world.setBlock(hit.x, bottomY + 1, hit.z, upper);
+    audio.door();
   }
 
   // --- blueprints: fill, unfill, remove ---
@@ -236,12 +406,23 @@ async function boot() {
       return;
     }
     if (!Number.isFinite(block.breakTime)) return;
-    if (!world.setBlock(hit.x, hit.y, hit.z, AIR)) return;
+    if (block.door) {
+      const bottomY = block.door.top ? hit.y - 1 : hit.y;
+      world.setBlock(hit.x, bottomY, hit.z, AIR);
+      world.setBlock(hit.x, bottomY + 1, hit.z, AIR);
+    } else if (!world.setBlock(hit.x, hit.y, hit.z, AIR)) return;
     const [lo, hi] = CONFIG.particles.breakCount;
     particles.burst(hit.x, hit.y, hit.z, atlas.avgColors[block.faces[0]] || [1, 1, 1], lo + Math.floor(Math.random() * (hi - lo + 1)));
     audio.break(block.sound);
     hud.bump();
     rig.shake(0.05, 0.12);
+  }
+
+  function removeAnimal(a) {
+    particles.burst(Math.floor(a.x), a.y, Math.floor(a.z), [1, 1, 1], 14);
+    animals.remove(a);
+    audio.poof();
+    hud.bump();
   }
 
   async function askRemove(inst) {
@@ -269,6 +450,7 @@ async function boot() {
   let placing = null;
   function openCatalogue() {
     if (mode === 'placing') endPlacement();
+    if (mode === 'selecting') cancelSelection();
     if (mode !== 'play' || paused) return;
     audio.tap();
     catalogue.open();
@@ -318,6 +500,46 @@ async function boot() {
     hud.hidePlacement();
   }
 
+  // --- "Save my build": two taps select a box, saved as a custom blueprint ---
+  let selection = null;
+  function startSelection() {
+    if (mode !== 'play') return;
+    mode = 'selecting';
+    selection = { a: null };
+    progressBar.hide();
+    hud.showPlacement('Tap 2 corners');
+  }
+  function cancelSelection() {
+    if (mode !== 'selecting') return;
+    mode = 'play';
+    selection = null;
+    highlight.hideFootprint();
+    hud.hidePlacement();
+    audio.tap();
+  }
+  function selectionTap(sx, sy) {
+    const hit = targetAt(sx, sy, CONFIG.player.reach + 6);
+    if (!hit || hit.id === GHOST) { audio.error(); return; }
+    if (!selection.a) {
+      selection.a = { x: hit.x, y: hit.y, z: hit.z };
+      highlight.setFootprint(hit.x, hit.y, hit.z, 1, 1, 1, true);
+      audio.tick(0.3);
+      return;
+    }
+    const r = captureRegion(world, selection.a, hit, customTypes.length + 1);
+    if (!r.ok) { audio.error(); hud.shakePlacement(); return; }
+    customTypes.push(r.type);
+    buildings.registerType(r.type);
+    autosaver.markDirty('custom');
+    mode = 'play';
+    selection = null;
+    highlight.hideFootprint();
+    hud.hidePlacement();
+    audio.saved();
+    overlays.flash('SAVED!', 1.2);
+    overlays.spawnConfetti(16);
+  }
+
   // --- celebration ---
   let celebration = null;
   function completeBuilding(inst) {
@@ -327,9 +549,18 @@ async function boot() {
     highlight.setCrack(null, 0);
     highlight.setTarget(null);
     touch.releaseAll();
+    inventory.close();
     progressBar.hide();
     const award = progression.awardXp(type.rewardXp);
     progression.addGems(type.rewardGems);
+    if (award.leveledUp) villagers.ensureCount(villagers.villagers.length + award.levelsGained, () => ({ x: inst.x + type.size[0] / 2 + (Math.random() - 0.5) * 4, z: inst.z + type.size[2] + 2 + Math.random() * 3 }));
+    if (type.spawns) {
+      type.spawns.forEach((species, i) => {
+        const x = inst.x + type.size[0] / 2 + (i - type.spawns.length / 2) * 1.6 + 0.8, z = inst.z + type.size[2] + 1.5;
+        const gy = animals.groundAt(Math.floor(x), Math.floor(z));
+        if (gy >= 1) { const a = animals.spawn(species, x, gy + 1, z, { x: inst.x + type.size[0] / 2, z }); if (a) a.bump = 1; }
+      });
+    }
     const c = buildings.center(inst);
     const [w, h, d] = type.size;
     rig.startOrbit(c.x, c.y, c.z, Math.max(w, d) * 1.2 + 5, h * 0.7 + 3);
@@ -385,7 +616,16 @@ async function boot() {
     let first = null;
     for (const h of holds.values()) {
       const sx = h.centered ? R.width / 2 : h.sx, sy = h.centered ? R.height / 2 : h.sy;
-      const hit = targetAt(sx, sy);
+      const ent = entityAt(sx, sy);
+      if (ent && ent.kind === 'animal') {
+        const key = 'animal:' + ent.animal.uid;
+        if (key !== h.key) { h.key = key; h.target = null; h.progress = 0; }
+        h.progress += dt / 0.5;
+        ent.animal.bump = Math.max(ent.animal.bump, 0.6);
+        if (h.progress >= 1) { removeAnimal(ent.animal); h.progress = 0; h.key = null; }
+        continue;
+      }
+      const hit = targetAt(sx, sy, CONFIG.player.reach, true); // long-press can also scoop up water
       const key = hit ? `${hit.x},${hit.y},${hit.z}` : null;
       if (key !== h.key) { h.key = key; h.target = hit; h.progress = 0; }
       if (!hit) continue;
@@ -406,22 +646,35 @@ async function boot() {
   // --- input ---
   const joyMove = { x: 0, y: 0 }, kbMove = { x: 0, y: 0 };
   const joystick = createJoystick(document.getElementById('joystick'), (x, y) => { joyMove.x = x; joyMove.y = y; });
+  const bubbleList = [];
+  function sayBubble(v, text) {
+    v.bubble = { text, until: performance.now() + 2200 };
+  }
   function onTap(sx, sy) {
     if (paused) return;
     if (mode === 'celebrating') { dismissCelebration(); return; }
     if (mode === 'placing') { confirmPlacement(); return; }
+    if (mode === 'selecting') { selectionTap(sx, sy); return; }
     if (mode !== 'play') return;
+    if (inventory.isOpen) { inventory.close(); return; }
+    const ent = entityAt(sx, sy);
+    if (ent) {
+      if (ent.kind === 'animal') { ent.animal.bump = 1; audio.animal(ent.animal.species); }
+      else { ent.villager.waveT = 2.2; ent.villager.cooldown = 8; sayBubble(ent.villager, '👋'); audio.tap(); }
+      return;
+    }
     const hit = targetAt(sx, sy, CONFIG.player.reach + 3);
     if (!hit) return;
     if (hit.id === GHOST) { fillGhost(hit); return; }
     if (hit.eyeDist > CONFIG.player.reach + 0.7) return;
+    if (blockById(hit.id).door) { toggleDoor(hit); return; }
     tryPlace(hit);
   }
   const actions = {
     look: (dx, dy) => { if (mode !== 'celebrating') player.look(dx, dy, CONFIG.camera.lookDegPerPx); },
     lookMouse: (dx, dy) => { if (mode !== 'celebrating') player.look(dx, dy, CONFIG.camera.mouseDegPerPx); },
     tap: onTap,
-    holdStart: (id, sx, sy) => { if (mode === 'play') holds.set(id, { sx, sy, centered: id === 'mouse', key: null, target: null, progress: 0 }); },
+    holdStart: (id, sx, sy) => { if (mode === 'play' && !inventory.isOpen) holds.set(id, { sx, sy, centered: id === 'mouse', key: null, target: null, progress: 0 }); },
     holdMove: (id, sx, sy) => { const h = holds.get(id); if (h) { h.sx = sx; h.sy = sy; } },
     holdEnd: (id) => holds.delete(id),
     jumpDown: () => { player.requestJump(); player.jumpHeld = true; },
@@ -429,8 +682,18 @@ async function boot() {
     toggleFly: () => hud.setFlyMode(player.toggleFly()),
     toggleCamera: () => hud.setCameraMode(rig.toggle()),
     toggleDebug: () => debug.toggle(),
-    escape: () => { if (catalogue.isOpen) catalogue.close(); else if (mode === 'placing') cancelPlacement(); else if (mode === 'celebrating') dismissCelebration(); else setPaused(!paused); },
+    escape: () => {
+      if (catalogue.isOpen) catalogue.close();
+      else if (inventory.isOpen) inventory.close();
+      else if (minimap.isOpen) minimap.close();
+      else if (mode === 'placing') cancelPlacement();
+      else if (mode === 'selecting') cancelSelection();
+      else if (mode === 'celebrating') dismissCelebration();
+      else setPaused(!paused);
+    },
     build: () => { if (catalogue.isOpen) catalogue.close(); else openCatalogue(); },
+    inventory: () => { if (mode === 'play' && !paused) inventory.toggle(); },
+    map: () => { if (mode === 'play' && !paused) minimap.toggle(); },
     selectSlot: (i) => hotbar.select(i),
     cycleSlot: (d) => hotbar.cycle(d),
     setKeyboardMove: (x, y) => { kbMove.x = x; kbMove.y = y; },
@@ -450,10 +713,18 @@ async function boot() {
   meta.persisted = persisted;
   meta.version = CONFIG.version;
   autosaver.markDirty('meta');
-  document.addEventListener('visibilitychange', () => { if (document.hidden) touch.releaseAll(); });
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) touch.releaseAll();
+    else { wheat.tick(); swReg?.update?.().catch(() => {}); }
+  });
 
-  // --- service worker ---
-  registerSW({ immediate: true });
+  // --- service worker: auto-installs updates, the toast asks for a restart to apply them ---
+  let swReg = null;
+  registerSW({
+    immediate: true,
+    onNeedReload: () => toast.show('Updated, restart to apply', { onTap: () => window.location.reload() }),
+    onRegisteredSW: (url, reg) => { swReg = reg; if (reg) setInterval(() => reg.update().catch(() => {}), 60 * 60 * 1000); },
+  });
 
   // --- game loop ---
   let started = false;
@@ -468,7 +739,7 @@ async function boot() {
     frameNo++;
     if (!paused && started) {
       desktop.update();
-      const inputOk = mode === 'play' || mode === 'placing';
+      const inputOk = (mode === 'play' || mode === 'placing' || mode === 'selecting') && !inventory.isOpen && !minimap.isOpen;
       if (!inputOk) { player.move.x = 0; player.move.y = 0; }
       else if (joystick.active) { player.move.x = joyMove.x; player.move.y = joyMove.y; }
       else { player.move.x = kbMove.x; player.move.y = kbMove.y; }
@@ -488,11 +759,18 @@ async function boot() {
         lookYaw: player.yaw, lookPitch: player.pitch, moving: player.moving, moveYaw: player.moveYaw,
       });
       avatar.group.visible = rig.avatarVisible;
+      animals.update(dt, player);
+      villagers.update(dt, player, sayBubble);
+      wheat.update(dt);
+      dayNight.update(dt);
       lighting.update(player.x, player.y, player.z);
+      torchLights.update(dt, player.x, player.y + 1, player.z, 3 + 9 * dayNight.darkness);
+      audio.setAmbient(dayNight.phase);
+      waterTint.style.opacity = player.eyeInWater ? 1 : 0;
       chunkRenderer.update(CONFIG.render.maxRemeshPerFrame);
       if (mode === 'play') {
         updateHolds(dt);
-        highlight.setTarget(targetAt(R.width / 2, R.height / 2, CONFIG.player.reach + 3));
+        highlight.setTarget(inventory.isOpen ? null : targetAt(R.width / 2, R.height / 2, CONFIG.player.reach + 3));
         if (frameNo % 10 === 0) {
           const near = buildings.nearestUnfinished(player.x, player.z, 12);
           if (near) showProgress(near);
@@ -501,13 +779,22 @@ async function boot() {
       } else if (mode === 'placing') {
         highlight.setTarget(null);
         updatePlacement();
+      } else if (mode === 'selecting') {
+        highlight.setTarget(targetAt(R.width / 2, R.height / 2, CONFIG.player.reach + 6));
       } else {
         highlight.setTarget(null);
       }
       highlight.update(dt);
       particles.update(dt);
       walls.update(player.x, player.z);
-      debug.set('pos', `${player.x.toFixed(1)} ${player.y.toFixed(1)} ${player.z.toFixed(1)}  edits ${editCount}  mode ${mode}`);
+      // speech bubbles
+      bubbleList.length = 0;
+      for (const v of villagers.villagers) {
+        if (v.bubble && v.bubble.until > now) bubbleList.push({ id: v.skinIndex + ':' + v.x.toFixed(0), x: v.x, y: v.y + 2.1, z: v.z, text: v.bubble.text });
+        else v.bubble = null;
+      }
+      bubbles.update(bubbleList, toScreen);
+      debug.set('pos', `${player.x.toFixed(1)} ${player.y.toFixed(1)} ${player.z.toFixed(1)}  edits ${editCount}  mode ${mode}  t ${dayNight.time.toFixed(2)} villagers ${villagers.villagers.length} animals ${animals.animals.length} torches ${torchLights.count}`);
     } else {
       rig.update(dt, player);
     }
@@ -534,7 +821,9 @@ async function boot() {
   // expose for debugging in the console
   window.__bv = {
     world, player, rig, chunkRenderer, renderer, autosaver, atlas, actions, debug, targetAt, hotbar, scene,
-    buildings, progression, catalogue, overlays, startPlacement, confirmPlacement, completeBuilding, get mode() { return mode; },
+    buildings, progression, catalogue, overlays, startPlacement, confirmPlacement, completeBuilding,
+    animals, villagers, wheat, torchLights, dayNight, inventory, minimap, toast, customTypes, startSelection, entityAt,
+    get mode() { return mode; },
   };
 }
 

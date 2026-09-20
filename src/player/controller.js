@@ -1,4 +1,4 @@
-import { SOLID } from '../data/blocks.js';
+import { SOLID, LIQUID } from '../data/blocks.js';
 import { CONFIG } from '../config.js';
 
 const DEG = Math.PI / 180;
@@ -27,6 +27,8 @@ export class PlayerController {
     this.moveYaw = 0;
     this.distanceWalked = 0;
     this.landed = false;
+    this.inWater = false;
+    this.eyeInWater = false;
   }
 
   setPosition(x, y, z) {
@@ -89,7 +91,7 @@ export class PlayerController {
   tryMoveHorizontal(dx, dz) {
     const c = this.cfg;
     const hw = c.width / 2;
-    const stepOK = c.autoStep && this.onGround && !this.flying;
+    const stepOK = c.autoStep && (this.onGround || this.inWater) && !this.flying;
     // X axis
     if (dx !== 0) {
       const nx = this.x + dx;
@@ -158,7 +160,10 @@ export class PlayerController {
     if (this.move.y < 0.3) this.sprinting = false;
     const sprint = this.sprinting || this.sprintKey;
 
-    const speed = (this.flying ? c.flySpeed : c.walkSpeed) * (sprint ? c.sprintMultiplier : 1);
+    const fx0 = Math.floor(this.x), fz0 = Math.floor(this.z);
+    this.inWater = !!LIQUID[W.getBlock(fx0, Math.floor(this.y + 0.4), fz0)];
+    this.eyeInWater = !!LIQUID[W.getBlock(fx0, Math.floor(this.y + c.eyeHeight), fz0)];
+    const speed = (this.flying ? c.flySpeed : c.walkSpeed) * (sprint ? c.sprintMultiplier : 1) * (this.inWater && !this.flying ? 0.55 : 1);
     const fx = -Math.sin(this.yaw), fz = -Math.cos(this.yaw);
     const rx = Math.cos(this.yaw), rz = -Math.sin(this.yaw);
     let wx = fx * this.move.y + rx * this.move.x;
@@ -176,6 +181,15 @@ export class PlayerController {
     if (this.flying) {
       const target = (this.jumpHeld ? 1 : 0) - (this.descendHeld ? 1 : 0);
       this.vy += (target * c.flyVerticalSpeed - this.vy) * (1 - Math.exp(-dt * 12));
+      this.onGround = false;
+    } else if (this.inWater) {
+      // swimming: gentle sink, hold jump to swim up
+      this.vy -= 6 * dt;
+      if (this.vy < -2.5) this.vy = -2.5;
+      if (this.jumpHeld || this.jumpQueued > 0) {
+        this.vy += (3.2 - this.vy) * (1 - Math.exp(-dt * 6));
+        this.jumpQueued = 0;
+      }
       this.onGround = false;
     } else {
       this.vy -= c.gravity * dt;

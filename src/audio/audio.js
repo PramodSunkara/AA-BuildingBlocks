@@ -64,8 +64,90 @@ export function createAudio() {
     s.stop(t + decay + 0.02);
   }
 
+  function sweep(f0, f1, type, peak, dur, cutoff = 8000, delay = 0) {
+    if (!ctx) return;
+    const t = ctx.currentTime + delay;
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    const f = ctx.createBiquadFilter();
+    f.type = 'lowpass';
+    f.frequency.value = cutoff;
+    o.type = type;
+    o.frequency.setValueAtTime(f0, t);
+    o.frequency.exponentialRampToValueAtTime(Math.max(20, f1), t + dur);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(peak, t + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(f).connect(g).connect(master);
+    o.start(t);
+    o.stop(t + dur + 0.05);
+  }
+  function vibrato(freq, type, peak, dur, depth, rate, cutoff = 4000) {
+    if (!ctx) return;
+    const t = ctx.currentTime;
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    const f = ctx.createBiquadFilter();
+    f.type = 'lowpass';
+    f.frequency.value = cutoff;
+    o.type = type;
+    const steps = Math.floor(dur * rate * 2);
+    for (let i = 0; i <= steps; i++) o.frequency.setValueAtTime(freq * (1 + (i % 2 ? depth : -depth)), t + (i / (rate * 2)));
+    env(g, t, peak, dur);
+    o.connect(f).connect(g).connect(master);
+    o.start(t);
+    o.stop(t + dur + 0.05);
+  }
+
+  // --- ambient birds / crickets ---
+  let ambientMode = 'none', ambientTimer = null;
+  function scheduleAmbient() {
+    clearTimeout(ambientTimer);
+    if (ambientMode === 'none' || !ctx) return;
+    if (ambientMode === 'day') {
+      const n = 2 + Math.floor(Math.random() * 3);
+      const base = 2200 + Math.random() * 1200;
+      for (let i = 0; i < n; i++) sweep(base, base * (1 + (Math.random() - 0.3) * 0.5), 'sine', 0.035, 0.09, 8000, i * 0.13);
+      ambientTimer = setTimeout(scheduleAmbient, 1500 + Math.random() * 4000);
+    } else {
+      for (let i = 0; i < 6; i++) sweep(4300, 4300, 'sine', 0.02, 0.03, 8000, i * 0.06);
+      ambientTimer = setTimeout(scheduleAmbient, 700 + Math.random() * 1500);
+    }
+  }
+
+  const ANIMAL = {
+    chicken: () => { for (let i = 0; i < 3; i++) { sweep(900, 650, 'square', 0.06, 0.08, 1800, i * 0.14); } },
+    cow: () => sweep(170, 115, 'sawtooth', 0.2, 0.7, 600),
+    pig: () => { sweep(320, 260, 'square', 0.09, 0.12, 900); sweep(280, 340, 'square', 0.09, 0.14, 900, 0.16); burst(700, 0.08, 0.12); },
+    sheep: () => vibrato(380, 'triangle', 0.16, 0.55, 0.06, 9, 2500),
+    dog: () => { sweep(260, 180, 'square', 0.12, 0.1, 700); burst(500, 0.12, 0.08); sweep(260, 180, 'square', 0.12, 0.1, 700, 0.18); },
+    cat: () => { sweep(600, 950, 'sine', 0.12, 0.25); sweep(950, 500, 'sine', 0.12, 0.3, 8000, 0.25); },
+    horse: () => vibrato(650, 'sawtooth', 0.12, 0.6, 0.12, 12, 1600),
+    rabbit: () => { sweep(1800, 2300, 'sine', 0.07, 0.06); sweep(1800, 2300, 'sine', 0.07, 0.06, 8000, 0.1); },
+  };
+
   return {
     unlock,
+    setAmbient(mode) {
+      if (mode === ambientMode) return;
+      ambientMode = mode;
+      scheduleAmbient();
+    },
+    animal(species) {
+      ANIMAL[species]?.();
+    },
+    poof() {
+      burst(1800, 0.15, 0.2);
+      sweep(500, 200, 'sine', 0.1, 0.2);
+    },
+    door() {
+      burst(1200, 0.15, 0.08);
+      tone(180, 'triangle', 0.15, 0.1, -40);
+    },
+    saved() {
+      tone(660, 'sine', 0.15, 0.12); tone(880, 'sine', 0.15, 0.2, 0);
+      setTimeout(() => tone(1320, 'sine', 0.12, 0.4), 120);
+    },
     setMuted(m) {
       muted = m;
       if (master) master.gain.value = m ? 0 : 0.5;

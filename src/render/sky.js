@@ -48,9 +48,15 @@ export function createSky(scene) {
     scene.fog.color.set(horizonHex);
   }
 
+  function setColorsRGB(zenith, horizon) {
+    material.uniforms.zenith.value.copy(zenith);
+    material.uniforms.horizon.value.copy(horizon);
+    scene.fog.color.copy(horizon);
+  }
+
   function update(cameraPosition) {
     mesh.position.copy(cameraPosition);
   }
 
-  return { mesh, setColors, update };
+  return { mesh, setColors, setColorsRGB, update };
 }

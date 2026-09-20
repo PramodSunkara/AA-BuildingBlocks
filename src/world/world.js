@@ -16,6 +16,7 @@ export class World {
     }
     this.dirtyQueue = [];
     this.onChange = null; // set by the autosaver
+    this.onBlockChanged = null; // (x, y, z, id, prev) for wheat growth and torch lights
     this.spawn = { x: 64.5, y: 20, z: 64.5 };
   }
 
@@ -49,7 +50,8 @@ export class World {
     const c = this.chunks[(z >> 4) * this.chunksX + (x >> 4)];
     const lx = x & 15, lz = z & 15;
     const idx = (y * CH + lz) * CH + lx;
-    if (c.data[idx] === id) return false;
+    const prev = c.data[idx];
+    if (prev === id) return false;
     c.data[idx] = id;
     if (record) c.edits.set(idx, recordAs ?? id);
     this.markDirty(c);
@@ -58,6 +60,7 @@ export class World {
     if (lz === 0) this.markDirty(this.chunkAt(c.cx, c.cz - 1));
     if (lz === CH - 1) this.markDirty(this.chunkAt(c.cx, c.cz + 1));
     if (notify && this.onChange) this.onChange();
+    this.onBlockChanged?.(x, y, z, id, prev);
     return true;
   }
 

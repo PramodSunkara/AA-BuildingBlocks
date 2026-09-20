@@ -19,10 +19,19 @@ export class BuildingManager {
     this.cells = new Map(); // cell key -> { inst, i }
     this.nextUid = 1;
     this.onChange = null;
+    this.types = new Map(Object.entries(BUILDING_BY_ID));
+  }
+
+  registerType(type) {
+    this.types.set(type.id, type);
+  }
+
+  typeById(id) {
+    return this.types.get(id);
   }
 
   type(inst) {
-    return BUILDING_BY_ID[inst.typeId];
+    return this.types.get(inst.typeId);
   }
 
   cellAt(x, y, z) {
@@ -175,7 +184,7 @@ export class BuildingManager {
     this.instances = [];
     this.cells.clear();
     for (const r of data.instances) {
-      const t = BUILDING_BY_ID[r.typeId];
+      const t = this.types.get(r.typeId);
       if (!t) continue;
       const filled = new Uint8Array(t.voxels.length);
       if (r.filled) filled.set(r.filled.subarray ? r.filled.subarray(0, filled.length) : r.filled.slice(0, filled.length));

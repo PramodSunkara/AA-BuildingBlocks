@@ -114,6 +114,16 @@ function emitBox(b, pad, x, y, z, tile, lo, hi, skipMask) {
   }
 }
 
+// Sub-box with per-face tiles; faces flush with the cell boundary next to an opaque block are skipped.
+function emitModelBox(b, pad, x, y, z, mb) {
+  for (let f = 0; f < 6; f++) {
+    const F = FACES[f];
+    const flush = F.pos ? mb.hi[F.axis] >= 0.999 : mb.lo[F.axis] <= 0.001;
+    if (flush && OPAQUE[pad[pidx(x + F.n[0], y + F.n[1], z + F.n[2])]]) continue;
+    emitFace(b, pad, x, y, z, f, mb.tiles[f], mb.lo, mb.hi, false, SHADE[f]);
+  }
+}
+
 function emitCross(b, x, y, z, tile, bright) {
   const r = tileRect(tile);
   const h = 0.98;
@@ -183,6 +193,8 @@ export function meshChunk(world, chunk) {
         } else if (shape === SHAPE.CROSS) {
           const below = OPAQUE[pad[pidx(x, y - 1, z)]] ? 1 : 0.9;
           emitCross(b, x, y, z, block.tile, 0.97 * below);
+        } else if (shape === SHAPE.MODEL) {
+          for (const mb of block.model) emitModelBox(b, pad, x, y, z, mb);
         } else if (shape === SHAPE.TORCH) {
           emitBox(b, pad, x, y, z, block.tile, [7 * S, 0, 7 * S], [9 * S, 10 * S, 9 * S], 1 << 3);
         } else if (shape === SHAPE.FENCE) {

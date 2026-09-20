@@ -3,7 +3,7 @@ import { iconSVG } from './icons.js';
 import { BUILDINGS } from '../data/buildings/index.js';
 
 // Full-height Build catalogue: slides in from the right edge, dims the world behind it.
-export function createCatalogue(container, { icons, progression, audio, onPick, onNeedGems, onOpen, onClose }) {
+export function createCatalogue(container, { icons, progression, audio, onPick, onNeedGems, onOpen, onClose, getCustom, onSaveBuild }) {
   const backdrop = document.createElement('div');
   backdrop.className = 'backdrop';
   backdrop.style.display = 'none';
@@ -12,14 +12,19 @@ export function createCatalogue(container, { icons, progression, audio, onPick, 
   panel.className = 'panel side-panel';
   panel.style.display = 'none';
   panel.innerHTML = `
-    <div class="side-header">${iconSVG('hammer', 30)}<span>Build</span><div class="btn panel small" id="catalogue-close">${iconSVG('cross', 26)}</div></div>
+    <div class="side-header">${iconSVG('hammer', 30)}<span>Build</span>
+      <div class="tabs mini"><div class="tab active" data-tab="all">${iconSVG('grid', 22)}</div><div class="tab" data-tab="mine">${iconSVG('camera', 22)}</div></div>
+      <div class="btn panel small" id="catalogue-close">${iconSVG('cross', 26)}</div></div>
     <div class="cards scroll"></div>`;
   container.append(backdrop, panel);
   const cards = panel.querySelector('.cards');
   cards.addEventListener('touchmove', (e) => e.stopPropagation(), { passive: true });
   panel.querySelector('#catalogue-close').addEventListener('pointerup', (e) => { e.preventDefault(); close(); });
   backdrop.addEventListener('pointerup', (e) => { e.preventDefault(); close(); });
-  let isOpen = false;
+  let isOpen = false, tab = 'all';
+  for (const t of panel.querySelectorAll('.tabs .tab')) {
+    t.addEventListener('pointerup', (e) => { e.preventDefault(); if (tab !== t.dataset.tab) { tab = t.dataset.tab; audio.tap(); buildCards(); } });
+  }
 
   function cloneCanvas(src) {
     const c = document.createElement('canvas');
@@ -33,7 +38,16 @@ export function createCatalogue(container, { icons, progression, audio, onPick, 
 
   function buildCards() {
     cards.replaceChildren();
-    for (const b of BUILDINGS) {
+    for (const t of panel.querySelectorAll('.tabs .tab')) t.classList.toggle('active', t.dataset.tab === tab);
+    if (tab === 'mine') {
+      const save = document.createElement('div');
+      save.className = 'card panel save-card';
+      save.innerHTML = `<div class="save-icon">${iconSVG('camera', 56)}</div><div class="card-name">Save my build</div>`;
+      save.addEventListener('pointerup', (e) => { e.preventDefault(); audio.tap(); close(); onSaveBuild?.(); });
+      cards.appendChild(save);
+    }
+    const list = tab === 'mine' ? (getCustom?.() || []) : BUILDINGS;
+    for (const b of list) {
       const card = document.createElement('div');
       card.className = 'card panel';
       const locked = progression.isLevelLocked(b);
