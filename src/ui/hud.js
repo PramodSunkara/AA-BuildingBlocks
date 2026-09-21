@@ -170,6 +170,10 @@ export function createHUD(container, avatarFaceCanvas, cb) {
     setCameraMode(mode) {
       camBtn.classList.toggle('active', mode === 'first');
     },
+    setFace(canvas) {
+      face.replaceChildren(canvas);
+      gsap.fromTo(face, { scale: 0.6 }, { scale: 1, duration: 0.4, ease: 'back.out(2)' });
+    },
     bump() {
       gsap.fromTo(container, { y: 0 }, { y: 5, duration: 0.05, yoyo: true, repeat: 1, ease: 'power1.inOut' });
     },

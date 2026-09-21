@@ -6,6 +6,13 @@ export function createDebugOverlay(container) {
   el.className = 'panel';
   el.style.display = 'none';
   container.appendChild(el);
+  const text = document.createElement('div');
+  const glBtn = document.createElement('div');
+  glBtn.className = 'debug-btn';
+  glBtn.textContent = 'lose GL';
+  el.append(text, glBtn);
+  let onLose = null;
+  glBtn.addEventListener('pointerup', (e) => { e.preventDefault(); e.stopPropagation(); onLose?.(); });
   let visible = false;
   let frames = 0, acc = 0, fps = 0, worst = 0, lastReport = performance.now();
   const extra = {};
@@ -28,7 +35,7 @@ export function createDebugOverlay(container) {
       lastReport = now;
       if (!visible) { frames = 0; acc = 0; worst = 0; return; }
       const mem = performance.memory ? `${(performance.memory.usedJSHeapSize / 1048576).toFixed(0)} MB` : 'n/a';
-      el.innerHTML = [
+      text.innerHTML = [
         `fps ${fps.toFixed(0)}  frame ${(1000 / fps).toFixed(1)} ms  worst ${(worst * 1000).toFixed(1)} ms`,
         `draw calls ${info.render.calls}  tris ${info.render.triangles}`,
         `chunk meshes ${chunkMeshes}  geometries ${info.memory.geometries}  textures ${info.memory.textures}`,
@@ -42,6 +49,9 @@ export function createDebugOverlay(container) {
     },
     get fps() {
       return fps;
+    },
+    setLoseContext(fn) {
+      onLose = fn;
     },
   };
 }

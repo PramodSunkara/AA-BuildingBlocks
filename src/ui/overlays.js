@@ -21,7 +21,24 @@ export function createOverlays(container) {
   dialog.style.display = 'none';
   dialog.innerHTML = `<div class="dialog panel"><div class="dialog-text">Remove the whole building?</div>
     <div class="dialog-buttons"><div class="btn panel big confirm" id="dialog-yes">${iconSVG('check', 40)}</div><div class="btn panel big deny" id="dialog-no">${iconSVG('cross', 40)}</div></div></div>`;
-  container.append(vignette, confetti, banner, levelEl, dialog);
+  // daily chest, rotate overlay, GL "one moment" card
+  const chestEl = document.createElement('div');
+  chestEl.className = 'overlay';
+  chestEl.id = 'chest';
+  chestEl.style.display = 'none';
+  chestEl.innerHTML = `<div class="dialog panel chest-box"><div class="chest-icon">${iconSVG('chest', 96)}</div><div class="chest-text"></div></div>`;
+  const rotateEl = document.createElement('div');
+  rotateEl.className = 'overlay solid';
+  rotateEl.id = 'rotate';
+  rotateEl.style.display = 'none';
+  rotateEl.innerHTML = `<div class="dialog panel"><div class="rotate-icon">${iconSVG('tablet', 96)}</div></div>`;
+  const glEl = document.createElement('div');
+  glEl.className = 'overlay solid';
+  glEl.id = 'gl-lost';
+  glEl.style.display = 'none';
+  glEl.innerHTML = `<div class="dialog panel"><div class="spin-icon">${iconSVG('resume', 56)}</div><div>One moment…</div></div>`;
+  container.append(vignette, confetti, banner, levelEl, dialog, chestEl, glEl);
+  document.body.appendChild(rotateEl); // above the start card too (the HUD becomes a stacking context when it bumps)
 
   const titleEl = banner.querySelector('.cel-title');
   const xpEl = banner.querySelector('.cel-xp');
@@ -91,7 +108,12 @@ export function createOverlays(container) {
   }
 
   function confirmRemove() {
+    return confirm('Remove the whole building?');
+  }
+
+  function confirm(text, icon = null) {
     return new Promise((resolve) => {
+      dialog.querySelector('.dialog-text').innerHTML = (icon ? iconSVG(icon, 40) + ' ' : '') + text;
       dialog.style.display = '';
       const box = dialog.firstElementChild;
       gsap.fromTo(box, { scale: 0.85, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.25, ease: 'back.out(1.7)' });
@@ -126,5 +148,51 @@ export function createOverlays(container) {
     }
   }
 
-  return { celebrate, levelUp, flash, confirmRemove, flyGems, spawnConfetti };
+  // Daily chest: bounce in, tap to open, resolves with the screen point gems should fly from.
+  function chest(gems) {
+    return new Promise((resolve) => {
+      const box = chestEl.firstElementChild, icon = chestEl.querySelector('.chest-icon'), text = chestEl.querySelector('.chest-text');
+      icon.innerHTML = iconSVG('chest', 96);
+      text.innerHTML = '';
+      chestEl.style.display = '';
+      gsap.fromTo(box, { scale: 0.4, opacity: 0, y: 40 }, { scale: 1, opacity: 1, y: 0, duration: 0.5, ease: 'back.out(1.8)' });
+      const wobble = gsap.to(icon, { rotation: 6, duration: 0.18, yoyo: true, repeat: -1, ease: 'sine.inOut', delay: 0.6 });
+      let opened = false;
+      const onTap = (e) => {
+        e.preventDefault();
+        if (opened) return;
+        opened = true;
+        wobble.kill();
+        chestEl.removeEventListener('pointerup', onTap);
+        gsap.set(icon, { rotation: 0 });
+        icon.innerHTML = iconSVG('chestOpen', 96);
+        text.innerHTML = `+${gems} ${iconSVG('gem', 28)}`;
+        gsap.fromTo(icon, { scale: 1.25 }, { scale: 1, duration: 0.5, ease: 'elastic.out(1, 0.4)' });
+        gsap.fromTo(text, { scale: 0.3, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.4, ease: 'back.out(2)' });
+        spawnConfetti(20);
+        const r = icon.getBoundingClientRect();
+        setTimeout(() => {
+          gsap.to(box, { scale: 0.7, opacity: 0, duration: 0.25, ease: 'power2.in', onComplete: () => (chestEl.style.display = 'none') });
+          resolve({ x: r.left + r.width / 2, y: r.top + r.height / 2 });
+        }, 900);
+      };
+      chestEl.addEventListener('pointerup', onTap);
+    });
+  }
+
+  function rotate(show) {
+    if (show === (rotateEl.style.display === '')) return;
+    if (show) {
+      rotateEl.style.display = '';
+      gsap.fromTo(rotateEl.firstElementChild, { scale: 0.8, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.3, ease: 'back.out(1.7)' });
+    } else {
+      gsap.to(rotateEl.firstElementChild, { scale: 0.8, opacity: 0, duration: 0.2, ease: 'power2.in', onComplete: () => (rotateEl.style.display = 'none') });
+    }
+  }
+
+  function glLost(show) {
+    glEl.style.display = show ? '' : 'none';
+  }
+
+  return { celebrate, levelUp, flash, confirmRemove, confirm, flyGems, spawnConfetti, chest, rotate, glLost };
 }

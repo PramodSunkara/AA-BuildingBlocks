@@ -38,6 +38,10 @@ import { createInventory } from './ui/inventory.js';
 import { createMinimap } from './ui/minimap.js';
 import { createToast } from './ui/toast.js';
 import { createBubbles } from './ui/bubbles.js';
+import { createPicker } from './ui/picker.js';
+import { createPauseMenu } from './ui/pauseMenu.js';
+import { createHints } from './ui/hints.js';
+import { buildBackup, shareBackup, parseBackup, applyBackup } from './world/backup.js';
 import { iconSVG } from './ui/icons.js';
 import { createAudio } from './audio/audio.js';
 import {
@@ -91,12 +95,17 @@ async function boot() {
   const torchLights = new TorchLights(scene, world, 8);
   const customTypes = [];
   const profiles = (await loadKey('profiles')) || {};
-  const profileId = profiles.current || 'p1';
-  if (!profiles[profileId]) profiles[profileId] = createProfileState(profileId);
-  profiles.current = profileId;
-  const profileState = profiles[profileId];
-  if (!profileState.settings) profileState.settings = createProfileState(profileId).settings;
-  if (!Array.isArray(profileState.hotbar) || profileState.hotbar.length !== 6) profileState.hotbar = HOTBAR_DEFAULT.slice();
+  function ensureProfile(id) {
+    if (!profiles[id]) profiles[id] = createProfileState(id);
+    const p = profiles[id];
+    if (!p.settings) p.settings = createProfileState(id).settings;
+    if (!Array.isArray(p.hotbar) || p.hotbar.length !== 6) p.hotbar = HOTBAR_DEFAULT.slice();
+    if (!p.hints) p.hints = {};
+    return p;
+  }
+  for (const pl of CONFIG.players) ensureProfile(pl.id);
+  let profileId = profiles.current || CONFIG.players[0].id;
+  let profileState = ensureProfile(profileId);
   const autosaver = createAutosaver({
     delayMs: CONFIG.autosaveDelayMs,
     savers: {
@@ -119,6 +128,7 @@ async function boot() {
   villagers.onChange = () => autosaver.markDirty('life');
   wheat.onChange = () => autosaver.markDirty('life');
   const progression = new Progression(profileState, () => autosaver.markDirty('profiles'));
+  const levelUpsTotal = () => CONFIG.players.reduce((n, pl) => n + (new Progression(profiles[pl.id]).level - 1), 0);
 
   const cSave = await loadKey('custom');
   if (cSave && Array.isArray(cSave.types)) for (const t of cSave.types) { customTypes.push(t); buildings.registerType(t); }
@@ -147,8 +157,8 @@ async function boot() {
   chunkRenderer.buildAll();
 
   // --- player, avatar, camera ---
-  const profile = CONFIG.players.find((p) => p.id === profileId) || CONFIG.players[0];
-  const skin = paintSkin(profile);
+  const skins = Object.fromEntries(CONFIG.players.map((pl) => [pl.id, paintSkin(pl)]));
+  let skin = skins[profileId];
   const avatar = new Avatar(skin.texture);
   scene.add(avatar.group);
   const player = new PlayerController(world);
@@ -162,22 +172,25 @@ async function boot() {
   const walls = createEdgeWalls(scene);
 
   // villagers: one per level gained across profiles
-  const levelUps = Object.values(profiles).filter((p) => p && typeof p === 'object' && typeof p.xp === 'number').reduce((n, p) => n + (new Progression(p).level - 1), 0);
   const spawnPoint = () => ({ x: sp.x + (Math.random() - 0.5) * 8, z: sp.z + 4 + Math.random() * 6 });
-  villagers.ensureCount(levelUps, spawnPoint);
+  villagers.ensureCount(levelUpsTotal(), spawnPoint);
 
   // --- HUD ---
-  const faceCanvas = document.createElement('canvas');
-  faceCanvas.width = faceCanvas.height = 80;
-  faceCanvas.style.width = faceCanvas.style.height = '40px';
-  const fctx = faceCanvas.getContext('2d');
-  fctx.imageSmoothingEnabled = false;
-  fctx.drawImage(skin.canvas, 8, 8, 8, 8, 0, 0, 80, 80);
+  function faceCanvasFor(id, px) {
+    const c = document.createElement('canvas');
+    c.width = c.height = px * 2;
+    c.style.width = c.style.height = px + 'px';
+    const cx = c.getContext('2d');
+    cx.imageSmoothingEnabled = false;
+    cx.drawImage(skins[id].canvas, 8, 8, 8, 8, 0, 0, px * 2, px * 2);
+    return c;
+  }
+  const faceCanvas = faceCanvasFor(profileId, 40);
 
   let mode = 'play'; // 'play' | 'placing' | 'celebrating' | 'dialog' | 'selecting'
   const debug = createDebugOverlay(hudEl);
   const hud = createHUD(hudEl, faceCanvas, {
-    onPause: () => setPaused(true),
+    onPause: () => openPause(),
     onCamera: () => { hud.setCameraMode(rig.toggle()); audio.tap(); },
     onFly: () => { hud.setFlyMode(player.toggleFly()); audio.tap(); },
     onJumpDown: () => { player.requestJump(); player.jumpHeld = true; },
@@ -231,6 +244,8 @@ async function boot() {
   });
   const inventory = createInventory(hudEl, { icons, hotbar, audio, onOpen: () => touch.releaseAll() });
   const minimap = createMinimap(hudEl, { world, atlas, buildings, buildingIcons, animals, villagers, player });
+  const picker = createPicker(hudEl, { audio });
+  const hints = createHints(hudEl);
   let shownGems = profileState.gems;
   hud.setLevel(progression.level, progression.progress.frac);
   hud.setGems(shownGems);
@@ -240,23 +255,134 @@ async function boot() {
     debug.set('size', `${w}x${h}`);
   });
 
-  // --- pause overlay (Stage 1: resume only) ---
+  // --- pause menu, settings, backup, profile switching ---
   let paused = false;
-  const pauseEl = document.createElement('div');
-  pauseEl.className = 'overlay';
-  pauseEl.style.display = 'none';
-  pauseEl.innerHTML = `<div class="dialog panel"><div>Paused</div><div class="btn panel big" id="btn-resume">${iconSVG('resume', 40)}</div></div>`;
-  hudEl.appendChild(pauseEl);
-  pauseEl.querySelector('#btn-resume').addEventListener('pointerup', (e) => { e.preventDefault(); setPaused(false); });
-  function setPaused(p) {
-    paused = p;
+  let persisted = null;
+  function applySettings() {
+    const st = profileState.settings;
+    dayNight.setAlwaysDay(st.alwaysDay !== false);
+    lighting.setShadows(st.shadows !== false);
+    audio.setMuted(st.sound === false);
+    audio.setMusic(!!st.music);
+  }
+  const pauseMenu = createPauseMenu(hudEl, {
+    audio,
+    version: CONFIG.version,
+    getSettings: () => profileState.settings,
+    setSetting: (k, v) => { profileState.settings[k] = v; applySettings(); autosaver.markDirty('profiles'); },
+    getProtected: () => persisted,
+    onResume: () => setPaused(false),
+    onSwitch: () => { paused = true; chooseProfile(); },
+    onSaveFile: async (setStatus) => {
+      try {
+        await autosaver.flush();
+        const b = await buildBackup();
+        setStatus(`${b.name}  ·  ${(b.bytes / 1024).toFixed(0)} KB`);
+        const how = await shareBackup(b.blob, b.name);
+        if (how === 'cancelled') setStatus('Not saved');
+        else { setStatus(how === 'shared' ? 'Saved ✓' : 'Downloaded ✓'); audio.saved(); }
+      } catch (e) {
+        console.warn(e);
+        setStatus('Could not save');
+        audio.error();
+      }
+    },
+    onLoadFile: async (file, setStatus) => {
+      try {
+        const doc = await parseBackup(file);
+        pauseMenu.close();
+        const ok = await overlays.confirm('Replace everything with this file?', 'load');
+        if (!ok) { setStatus('Not loaded'); openPause(); return; }
+        await applyBackup(doc);
+        overlays.glLost(true);
+        setTimeout(() => window.location.reload(), 300);
+      } catch (e) {
+        console.warn(e);
+        setStatus('Not a Block Village file');
+        audio.error();
+      }
+    },
+  });
+  function openPause() {
+    if (paused || mode === 'celebrating') return;
+    paused = true;
     touch.releaseAll();
     inventory.close();
     minimap.close();
-    pauseEl.style.display = p ? '' : 'none';
-    if (p) gsap.fromTo(pauseEl.firstChild, { scale: 0.9, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.25, ease: 'back.out(1.7)' });
-    else last = performance.now();
+    catalogue.close();
     audio.tap();
+    pauseMenu.open();
+  }
+  function setPaused(p) {
+    paused = p;
+    touch.releaseAll();
+    if (p) { pauseMenu.open(); }
+    else { pauseMenu.close(); last = performance.now(); }
+  }
+
+  function selectProfile(id) {
+    profileId = id;
+    profiles.current = id;
+    profileState = ensureProfile(id);
+    progression.setProfile(profileState);
+    skin = skins[id];
+    avatar.setSkin(skin.texture);
+    hud.setFace(faceCanvasFor(id, 40));
+    shownGems = profileState.gems;
+    hud.setLevel(progression.level, progression.progress.frac);
+    hud.setGems(shownGems);
+    hotbar.load(profileState.hotbar);
+    applySettings();
+    villagers.ensureCount(levelUpsTotal(), spawnPoint);
+    autosaver.markDirty('profiles');
+    hints.hide(true);
+  }
+
+  async function chooseProfile() {
+    touch.releaseAll();
+    hints.hide(true);
+    const list = CONFIG.players.map((pl) => ({ id: pl.id, name: pl.name, face: faceCanvasFor(pl.id, 96), level: new Progression(profiles[pl.id]).level }));
+    const id = await picker.open(list);
+    selectProfile(id);
+    started = true;
+    paused = false;
+    last = performance.now();
+    gsap.from('#hud > #tl, #hud > #tr, #hud > #right-stack, #hud > #hotbar, #hud > #btn-inventory', { opacity: 0, y: 12, duration: 0.3, stagger: 0.04, ease: 'power2.out', clearProps: 'opacity,transform' });
+    await maybeDailyChest();
+  }
+
+  // daily first-launch chest: 5-10 gems per profile per day
+  async function maybeDailyChest() {
+    const today = new Date().toDateString();
+    if (profileState.lastChest === today) return;
+    profileState.lastChest = today;
+    autosaver.markDirty('profiles');
+    const n = 5 + Math.floor(Math.random() * 6);
+    const prevMode = mode;
+    mode = 'dialog';
+    const from = await overlays.chest(n);
+    audio.jingle();
+    progression.addGems(n);
+    const to = hud.gemCounterPoint();
+    overlays.flyGems(from.x, from.y, to.x, to.y, n, () => { shownGems++; hud.setGems(shownGems); });
+    mode = prevMode === 'dialog' ? 'play' : prevMode;
+  }
+
+  // first-time hints (icon only), one profile flag per hint
+  const HINT_ORDER = ['joystick', 'look', 'tap', 'build'];
+  let joyHeld = 0, lookPx = 0;
+  function hintDone(k) {
+    if (profileState.hints[k]) return;
+    profileState.hints[k] = true;
+    autosaver.markDirty('profiles');
+    if (hints.current === k) hints.hide();
+  }
+  function updateHints(dt) {
+    const next = HINT_ORDER.find((k) => !profileState.hints[k]);
+    if (!next || mode !== 'play' || inventory.isOpen || catalogue.isOpen || minimap.isOpen) { if (hints.current) hints.hide(); return; }
+    if (hints.current !== next) hints.show(next, next === 'build' ? document.getElementById('btn-build') : null);
+    if (next === 'joystick' && joystick.active) { joyHeld += dt; if (joyHeld > 1) hintDone('joystick'); }
+    if (next === 'look' && lookPx > 200) hintDone('look');
   }
 
   // --- targeting ---
@@ -351,6 +477,7 @@ async function boot() {
     if (!world.setBlock(px, py, pz, id)) return;
     highlight.playPop(px, py, pz, id);
     audio.place(block.sound);
+    hintDone('tap');
   }
 
   function spawnAnimal(species, hit) {
@@ -389,6 +516,7 @@ async function boot() {
     highlight.playFill(hit.x, hit.y, hit.z, r.id);
     particles.burst(hit.x, hit.y, hit.z, [1, 0.95, 0.7], 6);
     audio.tick(r.placed / r.total);
+    hintDone('tap');
     showProgress(cell.inst);
     if (r.complete) completeBuilding(cell.inst);
   }
@@ -453,6 +581,7 @@ async function boot() {
     if (mode === 'selecting') cancelSelection();
     if (mode !== 'play' || paused) return;
     audio.tap();
+    hintDone('build');
     catalogue.open();
   }
   function startPlacement(type) {
@@ -671,7 +800,7 @@ async function boot() {
     tryPlace(hit);
   }
   const actions = {
-    look: (dx, dy) => { if (mode !== 'celebrating') player.look(dx, dy, CONFIG.camera.lookDegPerPx); },
+    look: (dx, dy) => { if (mode !== 'celebrating') { player.look(dx, dy, CONFIG.camera.lookDegPerPx); lookPx += Math.abs(dx); } },
     lookMouse: (dx, dy) => { if (mode !== 'celebrating') player.look(dx, dy, CONFIG.camera.mouseDegPerPx); },
     tap: onTap,
     holdStart: (id, sx, sy) => { if (mode === 'play' && !inventory.isOpen) holds.set(id, { sx, sy, centered: id === 'mouse', key: null, target: null, progress: 0 }); },
@@ -689,7 +818,8 @@ async function boot() {
       else if (mode === 'placing') cancelPlacement();
       else if (mode === 'selecting') cancelSelection();
       else if (mode === 'celebrating') dismissCelebration();
-      else setPaused(!paused);
+      else if (paused) setPaused(false);
+      else openPause();
     },
     build: () => { if (catalogue.isOpen) catalogue.close(); else openCatalogue(); },
     inventory: () => { if (mode === 'play' && !paused) inventory.toggle(); },
@@ -704,7 +834,6 @@ async function boot() {
   const desktop = setupDesktop({ canvas, actions });
 
   // --- storage persistence flag, meta ---
-  let persisted = null;
   try {
     if (navigator.storage?.persist) persisted = await navigator.storage.persist();
   } catch { persisted = null; }
@@ -716,6 +845,39 @@ async function boot() {
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) touch.releaseAll();
     else { wheat.tick(); swReg?.update?.().catch(() => {}); }
+  });
+
+  // --- rotate overlay: portrait pauses the game under a friendly card ---
+  let portrait = false;
+  function checkOrientation(w, h) {
+    const p = h > w;
+    if (p === portrait) return;
+    portrait = p;
+    overlays.rotate(p);
+    if (p) touch.releaseAll();
+    else last = performance.now();
+  }
+  R.onResize(checkOrientation);
+
+  // --- WebGL context loss: pause behind a "one moment" card, rebuild on restore ---
+  let glLost = false;
+  canvas.addEventListener('webglcontextlost', (e) => {
+    e.preventDefault();
+    glLost = true;
+    touch.releaseAll();
+    overlays.glLost(true);
+  });
+  canvas.addEventListener('webglcontextrestored', () => {
+    chunkRenderer.rebuildAll();
+    glLost = false;
+    last = performance.now();
+    overlays.glLost(false);
+  });
+  debug.setLoseContext(() => {
+    const ext = renderer.getContext().getExtension('WEBGL_lose_context');
+    if (!ext) return;
+    ext.loseContext();
+    setTimeout(() => ext.restoreContext(), 1500);
   });
 
   // --- service worker: auto-installs updates, the toast asks for a restart to apply them ---
@@ -737,8 +899,10 @@ async function boot() {
     last = now;
     if (dt > 0.05) dt = 0.05;
     frameNo++;
-    if (!paused && started) {
+    if (glLost) return;
+    if (!paused && !portrait && started) {
       desktop.update();
+      updateHints(dt);
       const inputOk = (mode === 'play' || mode === 'placing' || mode === 'selecting') && !inventory.isOpen && !minimap.isOpen;
       if (!inputOk) { player.move.x = 0; player.move.y = 0; }
       else if (joystick.active) { player.move.x = joyMove.x; player.move.y = joyMove.y; }
@@ -811,10 +975,8 @@ async function boot() {
     e.preventDefault();
     audio.unlock();
     audio.tap();
-    started = true;
-    last = performance.now();
     gsap.to(startEl, { opacity: 0, duration: 0.3, ease: 'power2.in', onComplete: () => startEl.remove() });
-    gsap.from('#hud > *', { opacity: 0, y: 12, duration: 0.3, stagger: 0.04, ease: 'power2.out', clearProps: 'opacity,transform' });
+    chooseProfile();
   };
   startEl.addEventListener('pointerup', begin, { once: true });
 
@@ -823,7 +985,8 @@ async function boot() {
     world, player, rig, chunkRenderer, renderer, autosaver, atlas, actions, debug, targetAt, hotbar, scene,
     buildings, progression, catalogue, overlays, startPlacement, confirmPlacement, completeBuilding,
     animals, villagers, wheat, torchLights, dayNight, inventory, minimap, toast, customTypes, startSelection, entityAt,
-    get mode() { return mode; },
+    picker, pauseMenu, hints, selectProfile, chooseProfile, maybeDailyChest, openPause, profiles,
+    get mode() { return mode; }, get paused() { return paused; }, get profileId() { return profileId; }, get profileState() { return profileState; },
   };
 }
 

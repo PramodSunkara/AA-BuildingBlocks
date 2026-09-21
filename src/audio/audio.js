@@ -99,6 +99,51 @@ export function createAudio() {
     o.stop(t + dur + 0.05);
   }
 
+  // --- gentle looping music (C / Am / F / G arpeggio at 80 bpm) ---
+  let musicOn = false, musicTimer = null, nextNote = 0, step = 0, musicGain = null;
+  const CHORDS = [[261.63, 329.63, 392.0], [220.0, 261.63, 329.63], [174.61, 220.0, 261.63], [196.0, 246.94, 293.66]];
+  const BASS = [130.81, 110.0, 87.31, 98.0];
+  const PATTERN = [0, 1, 2, 1, 0, 2, 1, 2];
+  function toneAt(t, freq, type, peak, dur, dest) {
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    o.type = type;
+    o.frequency.setValueAtTime(freq, t);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(peak, t + 0.03);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g).connect(dest);
+    o.start(t);
+    o.stop(t + dur + 0.05);
+  }
+  function musicTick() {
+    if (!ctx || !musicOn) return;
+    const now = ctx.currentTime;
+    while (nextNote < now + 0.4) {
+      const chord = CHORDS[Math.floor(step / 8) % 4];
+      const octave = step % 16 >= 8 ? 2 : 1;
+      toneAt(nextNote, chord[PATTERN[step % 8]] * octave, 'sine', 0.05, 0.55, musicGain);
+      if (step % 8 === 0) toneAt(nextNote, BASS[Math.floor(step / 8) % 4], 'triangle', 0.045, 2.6, musicGain);
+      if (step % 4 === 2) toneAt(nextNote, chord[2] * 2, 'triangle', 0.012, 0.3, musicGain);
+      step++;
+      nextNote += 0.375;
+    }
+  }
+  function setMusic(on) {
+    musicOn = on;
+    clearInterval(musicTimer);
+    musicTimer = null;
+    if (!on || !ctx) return;
+    if (!musicGain) {
+      musicGain = ctx.createGain();
+      musicGain.gain.value = 0.9;
+      musicGain.connect(master);
+    }
+    nextNote = ctx.currentTime + 0.1;
+    step = 0;
+    musicTimer = setInterval(musicTick, 120);
+  }
+
   // --- ambient birds / crickets ---
   let ambientMode = 'none', ambientTimer = null;
   function scheduleAmbient() {
@@ -127,7 +172,14 @@ export function createAudio() {
   };
 
   return {
-    unlock,
+    unlock() {
+      unlock();
+      if (musicOn && !musicTimer) setMusic(true);
+    },
+    setMusic,
+    get hasContext() {
+      return !!ctx;
+    },
     setAmbient(mode) {
       if (mode === ambientMode) return;
       ambientMode = mode;

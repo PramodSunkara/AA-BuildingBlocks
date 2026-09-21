@@ -10,6 +10,9 @@ export class Progression {
     this.profile = profile;
     this.onChange = onChange;
   }
+  setProfile(profile) {
+    this.profile = profile;
+  }
   get level() {
     return levelProgress(this.profile.xp).level;
   }

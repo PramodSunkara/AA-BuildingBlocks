@@ -96,9 +96,18 @@ export function createHotbar(container, iconRenderer, slots, onSelect, onChange)
     onChange?.(state.slots.slice());
   }
 
+  function load(slots) {
+    for (let i = 0; i < state.slots.length; i++) {
+      state.slots[i] = slots[i] ?? state.slots[i];
+      renderSlot(i);
+    }
+    gsap.fromTo(slotEls, { scale: 0.85 }, { scale: 1, duration: 0.3, stagger: 0.03, ease: 'back.out(2)' });
+  }
+
   select(0, false);
   return {
     el,
+    load,
     select,
     setSlot,
     cycle(delta) { select((selected + delta + state.slots.length) % state.slots.length); },
